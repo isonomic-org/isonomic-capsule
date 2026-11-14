@@ -1,0 +1,13 @@
+[package]
+name = "registry"
+description = "Embedded state store for the Isonomic Capsule engine: desired and observed service state"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+capsule-core.workspace = true
+rusqlite.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

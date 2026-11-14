@@ -1,0 +1,33 @@
+[workspace]
+resolver = "2"
+members = ["crates/capsule-core", "crates/registry", "crates/supervisor"]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2021"
+publish = false
+
+[workspace.dependencies]
+capsule-core = { path = "crates/capsule-core" }
+registry = { path = "crates/registry" }
+supervisor = { path = "crates/supervisor" }
+flate2 = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+sha2 = "0.10"
+tar = "0.4"
+# System trust store and proxy settings, so the download also works behind a
+# corporate proxy.
+ureq = { version = "2", features = ["native-certs"] }
+# The wire types live in the isonomic-sdk repo. Until both repos exist on
+# GitHub this is a sibling checkout; it becomes a pinned git dependency.
+isonomic-proto = { path = "../isonomic-sdk/crates/proto", features = ["tokio"] }
+libc = "0.2"
+rusqlite = { version = "0.32", features = ["bundled"] }
+sysinfo = "0.33"
+tempfile = "3"
+thiserror = "2"
+tokio = { version = "1", features = ["process", "net", "time", "sync", "io-util", "rt-multi-thread", "macros", "fs", "signal"] }
+
+[profile.release]
+lto = "thin"
