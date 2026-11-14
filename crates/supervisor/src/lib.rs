@@ -16,6 +16,8 @@ pub mod service;
 mod spawn;
 pub mod stack;
 
+use std::time::Duration;
+
 pub use capsule_core::{ServiceState, Tier};
 pub use endpoint::Endpoint;
 pub use env::ChildEnv;
@@ -23,6 +25,19 @@ pub use logsink::LogSink;
 pub use probe::Readiness;
 pub use service::{ConfigFile, ServiceConfig, ServiceError, ServiceSupervisor, StopSignal};
 pub use stack::{Stack, StackService};
+
+/// First wait between readiness probes while a service starts.
+pub const FIRST_STARTING_PROBE: Duration = Duration::from_millis(50);
+
+/// Wait before the next readiness probe while a service starts: 50 ms,
+/// doubling, up to `max` (the configured probe interval, 5 s by default).
+/// A fast service is seen ready within a few tens of milliseconds instead of
+/// a full interval later; a slow one is still probed no more often than the
+/// ramp allows.
+pub fn starting_probe_delay(attempt: u32, max: Duration) -> Duration {
+    let factor = 1u32.checked_shl(attempt.min(16)).unwrap_or(u32::MAX);
+    FIRST_STARTING_PROBE.saturating_mul(factor).min(max)
+}
 
 /// Exponential backoff for restarts: 1s, 2s, 4s and so on, capped at 60s.
 pub fn restart_backoff_secs(attempt: u32) -> u64 {
@@ -48,6 +63,19 @@ mod tests {
         assert_eq!(restart_backoff_secs(6), 60);
         assert_eq!(restart_backoff_secs(63), 60);
         assert_eq!(restart_backoff_secs(64), 60); // overflow guard
+    }
+
+    #[test]
+    fn starting_probes_ramp_from_50ms_to_the_interval() {
+        let max = Duration::from_secs(5);
+        let delays: Vec<u64> = (0..9)
+            .map(|attempt| starting_probe_delay(attempt, max).as_millis() as u64)
+            .collect();
+        assert_eq!(delays, [50, 100, 200, 400, 800, 1600, 3200, 5000, 5000]);
+        assert_eq!(starting_probe_delay(u32::MAX, max), max);
+        // A shorter configured interval caps the ramp from the start.
+        let short = Duration::from_millis(25);
+        assert_eq!(starting_probe_delay(0, short), short);
     }
 
     #[test]

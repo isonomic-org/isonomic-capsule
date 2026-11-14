@@ -24,8 +24,8 @@ use crate::env::ChildEnv;
 use crate::logsink::{LogSink, DEFAULT_ROTATE_BYTES};
 use crate::monitor::{run_monitor, run_steady_probe};
 use crate::probe::Readiness;
-use crate::restart_backoff_secs;
 use crate::spawn::{alloc_endpoint, kill_group_now, spawn_child, terminate_group};
+use crate::{restart_backoff_secs, starting_probe_delay};
 
 /// Restart window for the circuit breaker (spec: >5 restarts in 10 minutes).
 pub const BREAKER_WINDOW: Duration = Duration::from_secs(600);
@@ -82,6 +82,8 @@ pub struct ServiceConfig {
     /// The child's whole environment. Nothing is inherited from the engine.
     pub env: ChildEnv,
     pub start_timeout: Duration,
+    /// Longest wait between readiness probes while starting. Probing ramps
+    /// up to it from 50 ms.
     pub probe_interval: Duration,
     pub steady_probe_interval: Duration,
     pub probe_timeout: Duration,
@@ -322,6 +324,7 @@ impl ServiceSupervisor {
         self.shared.pgid.store(pid, Ordering::SeqCst);
 
         let deadline = Instant::now() + self.shared.config.start_timeout;
+        let mut attempt = 0;
         loop {
             if self
                 .shared
@@ -349,7 +352,12 @@ impl ServiceSupervisor {
                     self.shared.config.start_timeout,
                 ));
             }
-            tokio::time::sleep(self.shared.config.probe_interval).await;
+            tokio::time::sleep(starting_probe_delay(
+                attempt,
+                self.shared.config.probe_interval,
+            ))
+            .await;
+            attempt += 1;
         }
 
         self.shared.set_state(ServiceState::Healthy);
