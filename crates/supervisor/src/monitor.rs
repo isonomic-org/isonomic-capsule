@@ -12,8 +12,8 @@ use tokio::time::Instant;
 
 use crate::endpoint::Endpoint;
 use crate::service::{ControlState, Shared, BREAKER_WINDOW};
-use crate::should_trip_breaker;
 use crate::spawn::{kill_pid, spawn_child};
+use crate::{should_trip_breaker, starting_probe_delay};
 
 /// Owns the child: reaps exits, distinguishes deliberate stops from crashes,
 /// restarts on the backoff schedule, trips the breaker into Degraded.
@@ -93,6 +93,7 @@ pub(crate) async fn run_monitor(
 
         let deadline = Instant::now() + shared.config.start_timeout;
         let mut ready = false;
+        let mut attempt = 0;
         while Instant::now() < deadline {
             if shared
                 .config
@@ -109,7 +110,8 @@ pub(crate) async fn run_monitor(
             if child.try_wait().ok().flatten().is_some() {
                 break; // already dead — count it on the next wait()
             }
-            tokio::time::sleep(shared.config.probe_interval).await;
+            tokio::time::sleep(starting_probe_delay(attempt, shared.config.probe_interval)).await;
+            attempt += 1;
         }
         if ready {
             shared.set_state(ServiceState::Healthy);
