@@ -1,0 +1,40 @@
+# Requests to the engine
+
+What the window's apps need from the engine, filed by the SDK session. Newest first. Each request names the SDK commit that brings its types. The in-memory engine in `isonomic-testkit` already behaves as described unless an item says otherwise, so the SDK's tests are the reference. When a request is done, add the engine commit that closes it.
+
+## R2 · The model gateway (`models` interface)
+
+**Status:** open. **Types:** isonomic-sdk PR #4, not merged yet; its changelog entry will name the `SDK_REF` commit. **Spec:** isonomic-sdk `docs/interfaces/models.md`; every shape is a fixture in `crates/proto/fixtures/v0/models.jsonl`.
+
+**Moving `SDK_REF` to it:** `WireError` gains a `memory` field, so build errors with `WireError::new(code, message)` or `WireError::memory(refusal)`. `Call`, `Reply` and `ServerMessage` lose `Eq` (temperatures and vectors are floats).
+
+1. **Five methods:** `models.list`, `models.info`, `models.stream`, `models.cancel`, `models.embed`, on top of the model gateway.
+2. **Check, then check again.** Call `proto::auth::authorize(caller, &call)` first; it refuses a model the manifest does not name. A call that leaves `model` out runs on the user's default chat (or embeddings) model: choose it, then call `proto::auth::authorize_model(caller, &model, remote)` before loading anything. The reply names the model chosen.
+3. **`models.list` is filtered** to the models the caller may use (`ModelAccess::permits` for an app; the shell sees all), so an app's picker never offers a model it would be refused.
+4. **Order on a stream:** send the `stream { subscription, model }` reply before the first `model_chunk` event. Every stream ends with exactly one chunk that has `stop`, and nothing follows it. `usage`, when known, rides on that last chunk.
+5. **Cancel belongs to the token that opened the stream.** Apps share the window's connection, so `models.cancel` from any other caller is answered `unknown_subscription`, as for a stream that has ended. A cancelled stream ends with a `stop: cancelled` chunk; a closed connection cancels all of its streams.
+6. **The memory gate refuses before a stream opens:** `insufficient_memory`, with `memory { required_bytes, available_bytes, reason }` filled in from the gate's own numbers, so the app can say why and offer a smaller or remote model.
+7. **Errors:** `unknown_model` (no such model, or no default of that kind); `unsupported` (embeddings from a chat model, say); `model_unavailable` (the worker is degraded or crashed, also as the `error` on a `stop: error` chunk mid-stream); `remote_disabled` (a remote model while the user's switch is off).
+8. **The remote switch is the user's, and off by default.** Turning it off cuts running remote streams with `stop: cancelled`. (The testkit does not model this cut yet: its switch only refuses new calls.)
+
+**Check:** the SDK's `crates/testkit/tests/models.rs` lists the behaviour case by case: every chunk kind in order, cancel and drop-to-cancel, cross-app cancel refused, the memory refusal's numbers, failure before and during a stream, recovery, embeddings in input order, and the token check on every method.
+
+## R1 · Capability tokens, `apps.grant` and tolerant decoding
+
+**Status:** open. **`SDK_REF`:** `32c09ffa29dd11ea0a25c072978b31f6c2b3b794` (isonomic-sdk #3). **Spec:** isonomic-sdk `docs/interfaces/apps.md`, `docs/interfaces/system.md` and the changelog.
+
+**Moving `SDK_REF` to it** breaks the broker in four places, all in `crates/broker/src/conn.rs`:
+
+- `ClientMessage::Request { id, call }` has a `token` field: `{ id, token, call }`.
+- `Call` is `#[non_exhaustive]`: the `match call` needs a `_` arm, answered `unknown_method`.
+- Error literals: use `WireError::new(code, message)` (R2 adds a field).
+- Reading: replace `read_message::<_, ClientMessage>` with `io::read_frame` then `lenient::decode_client`. Answer `Rejected { id, error }` with that id (an unknown method from a newer window is answered `unknown_method` with its own id, not id 0); answer `Garbage(error)` with id 0.
+
+Then:
+
+1. **Who is calling.** No token: `Caller::Shell`, the window on its own socket. A token: look up the app's approved manifest and build `Caller::App { id, capabilities }`. A token no app holds: `unknown_token`. Then `proto::auth::authorize(caller, &call)` on every request, before any work; its error is the answer. It already refuses `system` and `apps` to every app token.
+2. **`apps.grant { manifest }`** (shell only): `Manifest::validate()`, refusing with `invalid_manifest`; record the approval in the registry, then reply `granted { app, token }`. Granting the same app again keeps its earlier tokens valid, so open tabs keep working.
+3. **Tokens survive a restart.** Derive each token from the approved manifest with a secret kept in the Capsule directory (a keyed hash of the app id and its approved capabilities, say), so the same approval yields the same token after a restart and the window's open tabs keep working. The secret never leaves the engine.
+4. **Tokens are never logged.** `Token`'s `Debug` already prints `Token(..)`; keep them out of log lines and error messages too.
+
+**Check:** the SDK's `crates/testkit/tests/tokens.rs` and `tolerance.rs`: tokenless calls are the shell's, app tokens are refused `system` and `apps` and anything their manifest lacks, unknown and revoked tokens are refused, and a newer client's unknown method is answered with its own id.
