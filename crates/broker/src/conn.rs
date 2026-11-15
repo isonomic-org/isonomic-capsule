@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use isonomic_proto::auth::{authorize, Caller};
+use isonomic_proto::auth::{authorize, Caller, Interface};
 use isonomic_proto::io::{read_frame, write_message};
 use isonomic_proto::lenient::{decode_client, FromClient};
 use isonomic_proto::{
@@ -17,8 +17,7 @@ use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
-use crate::apps::Apps;
-use crate::{System, ENGINE_VERSIONS};
+use crate::{Services, System, ENGINE_VERSIONS};
 
 const DEFAULT_LOG_LINES: usize = 50;
 
@@ -65,7 +64,7 @@ fn forward(
     })
 }
 
-pub(crate) async fn handle(stream: UnixStream, system: Arc<dyn System>, apps: Arc<Apps>) {
+pub(crate) async fn handle(stream: UnixStream, system: Arc<dyn System>, services: Arc<Services>) {
     let (mut reader, writer) = stream.into_split();
     let (outbox, inbox) = mpsc::channel::<ServerMessage>(256);
     let writer_task = tokio::spawn(write_loop(writer, inbox));
@@ -126,7 +125,7 @@ pub(crate) async fn handle(stream: UnixStream, system: Arc<dyn System>, apps: Ar
         // before any work. Neither answer ever repeats the token.
         let manifest = match &token {
             None => None,
-            Some(token) => match apps.manifest(token) {
+            Some(token) => match services.apps.manifest(token) {
                 Ok(manifest) => Some(manifest),
                 Err(error) => {
                     let outcome = Outcome::Error(error);
@@ -190,13 +189,26 @@ pub(crate) async fn handle(stream: UnixStream, system: Arc<dyn System>, apps: Ar
                 then_shut_down = true;
                 Outcome::Result(Reply::ShuttingDown {})
             }
-            Call::AppsGrant { manifest } => match apps.grant(&manifest) {
+            Call::AppsGrant { manifest } => match services.apps.grant(&manifest) {
                 Ok(token) => Outcome::Result(Reply::Granted {
                     app: manifest.id,
                     token,
                 }),
                 Err(error) => Outcome::Error(error),
             },
+            call if call.interface() == Interface::Blobs => {
+                let app = manifest.as_ref().map(|m| m.id.clone());
+                let services = Arc::clone(&services);
+                let work = move || services.blobs.answer(app.as_deref(), call);
+                match tokio::task::spawn_blocking(work).await {
+                    Ok(Ok(reply)) => Outcome::Result(reply),
+                    Ok(Err(error)) => Outcome::Error(error),
+                    Err(_) => Outcome::Error(WireError::new(
+                        ErrorCode::Internal,
+                        "the blob store stopped answering",
+                    )),
+                }
+            }
             other => Outcome::Error(WireError::new(
                 ErrorCode::UnknownMethod,
                 format!("this engine does not serve {} yet", other.method()),

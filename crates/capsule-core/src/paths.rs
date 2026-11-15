@@ -59,6 +59,11 @@ impl CapsulePaths {
         self.root.join("secrets").join("token.key")
     }
 
+    /// Where apps' blobs are stored, one file per blob.
+    pub fn blobs_dir(&self) -> PathBuf {
+        self.root.join("blobs")
+    }
+
     /// Where sockets live. Usually `<root>/run`; a short per-user directory
     /// when the root is too deep for a socket path.
     pub fn run_dir(&self) -> &Path {

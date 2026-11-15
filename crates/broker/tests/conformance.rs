@@ -8,18 +8,12 @@
 
 use std::sync::Arc;
 
-use broker::{Apps, StackSystem, TokenKey};
+use broker::{Apps, Blobs, Services, StackSystem, TokenKey};
 use capsule_core::{CapsulePaths, FixedHardware, Profile};
 use registry::GrantStore;
 
 /// Checks of interfaces the engine does not serve yet.
 const NOT_YET: &[&str] = &[
-    // Probes unknown fields with a `blobs.info` call.
-    "wire.unknown_fields",
-    "blobs.round_trip",
-    "blobs.chunked",
-    "blobs.private",
-    "blobs.max_bytes",
     "events.round_trip",
     "events.scoped",
     "events.shell_reaches_app",
@@ -34,13 +28,16 @@ async fn the_engine_conforms() {
     let stack = Arc::new(supervisor::Stack::new(None));
     let hardware = Arc::new(FixedHardware::with_total(16 << 30));
     let system = StackSystem::new(stack, None, hardware, Profile::Standard);
-    let apps = Apps::new(
-        GrantStore::open(&paths.registry_db()).unwrap(),
-        TokenKey::load_or_create(&paths.token_key()).unwrap(),
-    );
+    let services = Services {
+        apps: Apps::new(
+            GrantStore::open(&paths.registry_db()).unwrap(),
+            TokenKey::load_or_create(&paths.token_key()).unwrap(),
+        ),
+        blobs: Blobs::open(&paths.blobs_dir(), &paths.registry_db()).unwrap(),
+    };
     let socket = paths.engine_socket();
     let bound = broker::bind(&socket).unwrap();
-    tokio::spawn(broker::serve(bound, system.clone(), Arc::new(apps)));
+    tokio::spawn(broker::serve(bound, system.clone(), Arc::new(services)));
 
     let report = isonomic_conformance::run(isonomic_client::unix_connector(&socket)).await;
     println!("{report}");

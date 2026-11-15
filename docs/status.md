@@ -11,6 +11,13 @@ Newest first. This file is the engine's status from now on. The history of each 
 
 New entries go at the top of this file, naming the area. The spec stays in `isonomic-desktop/docs/architecture/`.
 
+## 2026-11-15 · Broker: blob storage (SDK request R3)
+
+- The six `blobs` methods. Each blob is a file in `<capsule>/blobs` (user-only), named by a random handle, with a row in the registry database: owner, content type, size, bytes written.
+- Persist, then answer: a write's bytes are synced to disk before the row counts them, and the row is committed before the reply, so a client that saw `written: n` resumes at `n` after a restart. Bytes past the count (a crash mid-write) are dropped at the next write.
+- Limits: the manifest's `max_bytes` (through `proto::auth`), then the engine's own 64 MiB, then `CHUNK_BYTES` per call and the declared size per write. Another app's handle answers `unknown_blob`; the shell reaches every blob. Blob calls run off the async runtime.
+- Conformance: 17 of 22. The blobs checks and `wire.unknown_fields` now pass; events (R4) and sql (R5) remain.
+
 ## 2026-11-15 · Agents: the session log on SQLite (preparation)
 
 - New crate `agents`, planned in `docs/plans/agents.md`: adapters over the harness host's traits, and nothing of the loop or policy.
