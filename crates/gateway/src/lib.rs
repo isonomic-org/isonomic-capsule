@@ -25,7 +25,7 @@ use isonomic_proto::models::{ModelState, Role, StreamRequest};
 use isonomic_proto::{ErrorCode, MemoryRefusal, WireError};
 use isonomic_provider::{ChatStream, GatewayError, InferenceProvider, LocalLlama};
 
-pub use catalogue::Catalogue;
+pub use catalogue::{Catalogue, SLOW_CHAT_MODEL};
 
 /// The chat workers' default sampling.
 pub const CHAT_SAMPLING: &[&str] = &[

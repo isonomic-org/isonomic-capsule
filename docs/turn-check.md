@@ -37,4 +37,5 @@ On an Apple-silicon Mac, set `TRIPLE=aarch64-apple-darwin`.
 | Machine | Model | Load | First text (warm) | Speed | Notes |
 | --- | --- | --- | --- | --- | --- |
 | 2020 Intel MacBook Pro (i7-8850H, 16 GB) | Qwen3.5 0.8B | — | 11.0 s (cold, one turn) | — | First run, before the load was timed apart; 11.7 s for the turn. |
+| 2020 Intel MacBook Pro (i7-8850H, 16 GB), lightly loaded | Qwen3.5 2B | 5.3 s | 1.4–2.0 s | 7.7–16.1 tok/s | Three turns; real places in every reply. Engine cold start 199 ms. |
 | Linux CI-class Xeon, 4 cores | Qwen3.5 0.8B | 5.1 s | 0.3–0.5 s | 23–28 tok/s | Real engine binary, real llama.cpp `b12387`, real model. |

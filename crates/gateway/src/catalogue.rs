@@ -7,6 +7,11 @@ use isonomic_inference_core::{Capability, ModelRef};
 use isonomic_model_library::{Manifest, ModelEntry};
 use isonomic_proto::models::{ModelDetail, ModelInfo, ModelState};
 
+/// The chat model for slow machines (Intel Macs, the low profile): the
+/// smallest that answers usably. The 0.8B model is faster but invents
+/// facts; it stays for titles (`local:smallest`).
+pub const SLOW_CHAT_MODEL: &str = "qwen3.5-2b-q4-k-m";
+
 pub struct Catalogue {
     manifest: Manifest,
     dir: PathBuf,
@@ -29,20 +34,22 @@ impl Catalogue {
         &self.dir
     }
 
-    /// The model to recommend first: the smallest chat model on a slow
-    /// machine or the low profile, else the manifest's default. Installed
-    /// or not.
+    /// The model to recommend first: [`SLOW_CHAT_MODEL`] on a slow machine
+    /// or the low profile (the smallest chat model when the manifest has
+    /// no such entry), else the manifest's default. Installed or not.
     pub fn first_model(&self, small: bool) -> &ModelEntry {
+        if !(small || self.slow) {
+            return self.manifest.default_chat();
+        }
         let smallest = self
             .manifest
             .entries()
             .iter()
             .filter(|e| e.meta.supports(Capability::Chat))
             .min_by_key(|e| e.meta.size_bytes);
-        match smallest {
-            Some(entry) if small || self.slow => entry,
-            _ => self.manifest.default_chat(),
-        }
+        self.get(SLOW_CHAT_MODEL)
+            .or(smallest)
+            .unwrap_or_else(|| self.manifest.default_chat())
     }
 
     /// Where a model's file is, installed or not.
@@ -82,7 +89,8 @@ impl Catalogue {
                 .filter(move |e| e.meta.supports(capability))
         };
         if capability == Capability::Chat && self.slow {
-            return self.smallest(capability);
+            let slow = self.get(SLOW_CHAT_MODEL).filter(|e| self.installed(e));
+            return slow.or_else(|| self.smallest(capability));
         }
         match preferred {
             Some(p) if self.installed(p) => Some(p),
@@ -116,5 +124,73 @@ pub fn detail(entry: &ModelEntry, state: ModelState) -> ModelDetail {
         size_bytes: Some(entry.meta.size_bytes),
         license: Some(entry.meta.license.name.clone()),
         state,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// "Install" a model of the built-in manifest: a sparse file of its size.
+    fn install(catalogue: &Catalogue, id: &str) {
+        let entry = catalogue.get(id).expect(id);
+        let file = std::fs::File::create(catalogue.path(entry)).unwrap();
+        file.set_len(entry.meta.size_bytes).unwrap();
+    }
+
+    fn catalogue(dir: &Path, slow: bool) -> Catalogue {
+        Catalogue::new(Manifest::builtin(), dir.to_path_buf(), slow)
+    }
+
+    #[test]
+    fn slow_machines_default_to_the_two_billion_model_when_installed() {
+        let dir = tempfile::tempdir().unwrap();
+        let slow = catalogue(dir.path(), true);
+        install(&slow, "qwen3.5-0.8b-q4-k-m");
+        let id = |e: Option<&ModelEntry>| e.map(|e| e.meta.id.as_str().to_string());
+        // Only the 0.8B model: it is what there is.
+        assert_eq!(
+            id(slow.default_for(Capability::Chat)).as_deref(),
+            Some("qwen3.5-0.8b-q4-k-m")
+        );
+        install(&slow, SLOW_CHAT_MODEL);
+        assert_eq!(
+            id(slow.default_for(Capability::Chat)).as_deref(),
+            Some(SLOW_CHAT_MODEL)
+        );
+        // Titles still go to the smallest.
+        assert_eq!(
+            id(slow.smallest(Capability::Chat)).as_deref(),
+            Some("qwen3.5-0.8b-q4-k-m")
+        );
+    }
+
+    #[test]
+    fn the_first_model_is_the_two_billion_one_on_slow_machines_only() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(
+            catalogue(dir.path(), true)
+                .first_model(false)
+                .meta
+                .id
+                .as_str(),
+            SLOW_CHAT_MODEL
+        );
+        assert_eq!(
+            catalogue(dir.path(), false)
+                .first_model(true)
+                .meta
+                .id
+                .as_str(),
+            SLOW_CHAT_MODEL
+        );
+        let fast = catalogue(dir.path(), false);
+        let default = Manifest::builtin()
+            .default_chat()
+            .meta
+            .id
+            .as_str()
+            .to_string();
+        assert_eq!(fast.first_model(false).meta.id.as_str(), default);
     }
 }
