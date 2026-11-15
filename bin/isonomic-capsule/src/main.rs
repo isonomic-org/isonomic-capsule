@@ -111,6 +111,7 @@ async fn run() -> Result<(), AnyError> {
     stack.add(cache::NAME, Tier::T1, cache_service);
     let stack = Arc::new(stack);
 
+    let total_memory_bytes = hardware.probe().total_memory_bytes;
     let system = StackSystem::new(Arc::clone(&stack), Some(registry), hardware, profile);
     let apps = Arc::new(broker::Apps::new(
         registry::GrantStore::open(&paths.registry_db())?,
@@ -129,13 +130,19 @@ async fn run() -> Result<(), AnyError> {
     let server = (llama_status == packaging::BinaryStatus::Executable).then_some(llama);
     // Intel Macs run models on the CPU: talk to the smallest by default.
     let slow = cfg!(all(target_os = "macos", target_arch = "x86_64")) || profile == Profile::Low;
-    let gateway = Arc::new(gateway::Gateway::new(
-        isonomic_model_library::Manifest::builtin(),
-        paths.models_dir(),
-        server,
-        gate.clone(),
-        slow,
-    ));
+    let gateway = Arc::new(
+        gateway::Gateway::new(
+            isonomic_model_library::Manifest::builtin(),
+            paths.models_dir(),
+            server,
+            gate.clone(),
+            slow,
+        )
+        .with_machine(gateway::Machine {
+            profile: profile.to_string(),
+            total_memory_bytes,
+        }),
+    );
     // The agents host, on the gateway's models.
     let locale = agents::deps::EngineLocale::from_system();
     log(format!(

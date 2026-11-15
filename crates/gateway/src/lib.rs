@@ -10,6 +10,7 @@
 //! Remote models are not served: V1 is local only.
 
 mod catalogue;
+mod downloads;
 mod service;
 
 use std::collections::HashMap;
@@ -26,8 +27,32 @@ use isonomic_provider::{ChatStream, GatewayError, InferenceProvider, LocalLlama}
 
 pub use catalogue::Catalogue;
 
+/// No local model runs on less memory than this: 16 GiB.
+pub const MEMORY_FLOOR: u64 = 16 << 30;
+
+/// What the gateway knows about the machine, for `models.recommended`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Machine {
+    /// The engine's profile: `low`, `standard` or `high`.
+    pub profile: String,
+    pub total_memory_bytes: u64,
+}
+
+impl Default for Machine {
+    fn default() -> Self {
+        Self {
+            profile: "standard".into(),
+            total_memory_bytes: MEMORY_FLOOR,
+        }
+    }
+}
+
 /// Adjusts each worker's configuration (tests point it at a fake server).
 pub type Configure = Box<dyn Fn(&mut LlamaConfig) + Send + Sync>;
+
+/// Where a model's file is downloaded from: the manifest's own source by
+/// default (https only, checksum pinned). Tests serve it from loopback.
+pub type Source = Box<dyn Fn(&ModelEntry) -> isonomic_model_library::ModelSpec + Send + Sync>;
 
 pub struct Gateway {
     catalogue: Catalogue,
@@ -36,6 +61,9 @@ pub struct Gateway {
     gate: Arc<dyn capsule_core::RamGate>,
     configure: Configure,
     workers: Mutex<HashMap<String, Arc<LocalLlama>>>,
+    downloads: downloads::Downloads,
+    machine: Machine,
+    source: Source,
 }
 
 /// The engine's memory gate, as the inference supervisor asks for it.
@@ -86,7 +114,20 @@ impl Gateway {
             gate,
             configure: Box::new(|_| {}),
             workers: Mutex::new(HashMap::new()),
+            downloads: downloads::Downloads::default(),
+            machine: Machine::default(),
+            source: Box::new(ModelEntry::spec),
         }
+    }
+
+    pub fn with_source(mut self, source: Source) -> Self {
+        self.source = source;
+        self
+    }
+
+    pub fn with_machine(mut self, machine: Machine) -> Self {
+        self.machine = machine;
+        self
     }
 
     pub fn with_configure(mut self, configure: Configure) -> Self {
@@ -167,8 +208,15 @@ impl Gateway {
         Ok(worker)
     }
 
-    /// How a model's worker is doing.
+    /// How a model is doing: downloading, not installed, or its worker's
+    /// state.
     pub fn state(&self, entry: &ModelEntry) -> ModelState {
+        if self.downloads.received(entry.meta.id.as_str()).is_some() {
+            return ModelState::Downloading;
+        }
+        if !self.catalogue.installed(entry) {
+            return ModelState::NotInstalled;
+        }
         let workers = self.workers.lock().unwrap_or_else(|p| p.into_inner());
         let Some(worker) = workers.get(entry.meta.id.as_str()) else {
             return ModelState::Stopped;

@@ -22,6 +22,13 @@ pub enum ModelsAnswer {
         model: String,
         start: StreamStarter,
     },
+    /// `models.download`: reply `downloading { subscription, model,
+    /// total_bytes }`, then forward `download_progress` events.
+    Download {
+        model: String,
+        total_bytes: Option<u64>,
+        start: crate::agents::Starter,
+    },
 }
 
 pub trait Models: Send + Sync + 'static {

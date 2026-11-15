@@ -6,8 +6,10 @@ use broker::agents::BoxFuture;
 use broker::models::{ModelsAnswer, StreamStarter};
 use futures_util::StreamExt;
 use isonomic_proto::auth::Caller;
-use isonomic_proto::models::{ModelChunk, StopReason};
-use isonomic_proto::{Call, ErrorCode, Event, Manifest, Reply, ServerMessage, WireError};
+use isonomic_proto::models::{ModelChunk, Recommendation, StopReason};
+use isonomic_proto::{
+    Call, ErrorCode, Event, Manifest, MemoryRefusal, Reply, ServerMessage, WireError,
+};
 use isonomic_provider::ChatStream;
 use tokio::sync::{mpsc, oneshot};
 
@@ -124,6 +126,27 @@ impl Gateway {
                         start: forward(stream),
                     });
                 }
+                Call::ModelsDownload(d) => {
+                    let entry = self.catalogue().get(&d.model).ok_or_else(|| {
+                        WireError::new(ErrorCode::UnknownModel, format!("no model {}", d.model))
+                    })?;
+                    let (total_bytes, start) = if self.catalogue().installed(entry) {
+                        crate::downloads::already_installed(entry)
+                    } else {
+                        let dir = self.catalogue().dir().to_path_buf();
+                        self.downloads.start(entry, (self.source)(entry), dir)
+                    };
+                    return Ok(ModelsAnswer::Download {
+                        model: d.model,
+                        total_bytes,
+                        start,
+                    });
+                }
+                Call::ModelsDownloadCancel(d) => {
+                    self.downloads.cancel(&d.model)?;
+                    Reply::Cancelled {}
+                }
+                Call::ModelsRecommended(r) => Reply::Recommended(self.recommend(r.profile)?),
                 Call::ModelsEmbed { model, input } => {
                     let (model, vectors) = self.embed(who, model.as_deref(), input).await?;
                     Reply::Embeddings { model, vectors }
@@ -136,6 +159,34 @@ impl Gateway {
                 }
             };
         Ok(ModelsAnswer::Reply(reply))
+    }
+}
+
+impl Gateway {
+    /// `models.recommended`: the first model for a profile (the engine's
+    /// own when none is named), or `insufficient_memory` below the floor.
+    fn recommend(&self, profile: Option<String>) -> Result<Recommendation, WireError> {
+        let profile = profile.unwrap_or_else(|| self.machine.profile.clone());
+        if !["low", "standard", "high"].contains(&profile.as_str()) {
+            let message = format!("no profile {profile:?}; low, standard or high");
+            return Err(WireError::new(ErrorCode::BadRequest, message));
+        }
+        let total = self.machine.total_memory_bytes;
+        if total < crate::MEMORY_FLOOR {
+            return Err(WireError::memory(MemoryRefusal {
+                required_bytes: crate::MEMORY_FLOOR,
+                // The machine's total memory: the floor is about the
+                // machine, not what is free now.
+                available_bytes: total,
+                reason: "this machine has less memory than any local model needs".into(),
+            }));
+        }
+        let entry = self.catalogue().first_model(profile == "low");
+        Ok(Recommendation {
+            model: entry.meta.id.as_str().to_string(),
+            profile,
+            size_bytes: Some(entry.meta.size_bytes).filter(|s| *s > 0),
+        })
     }
 }
 

@@ -56,6 +56,8 @@ isonomic-llama = { path = "../isonomic-inference/crates/llama" }
 isonomic-model-library = { path = "../isonomic-inference/crates/library" }
 isonomic-provider = { path = "../isonomic-inference/crates/provider" }
 futures-util = "0.3"
+# The model library's HTTP client, with the same features, so types unify.
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream", "json"] }
 libc = "0.2"
 rusqlite = { version = "0.32", features = ["bundled"] }
 sysinfo = "0.33"
