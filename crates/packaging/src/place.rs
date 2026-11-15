@@ -146,9 +146,13 @@ fn build_from_source(
 
     let out = std::fs::File::create(log)?;
     let err = out.try_clone()?;
+    // Keep git from finding a repository above the source (the engine's own
+    // checkout): builds that stamp a commit would otherwise stamp ours.
+    let ceiling = source.parent().unwrap_or(source);
     let status = Command::new(&command)
         .args(&args)
         .envs(env)
+        .env("GIT_CEILING_DIRECTORIES", ceiling)
         .current_dir(source)
         .stdin(Stdio::null())
         .stdout(out)
