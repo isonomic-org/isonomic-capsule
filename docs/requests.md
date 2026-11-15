@@ -4,7 +4,7 @@ What the window's apps need from the engine, filed by the SDK session. Newest fi
 
 ## R2 · The model gateway (`models` interface)
 
-**Status:** open. **Types:** isonomic-sdk PR #4, not merged yet; its changelog entry will name the `SDK_REF` commit. **Spec:** isonomic-sdk `docs/interfaces/models.md`; every shape is a fixture in `crates/proto/fixtures/v0/models.jsonl`.
+**Status:** open. **`SDK_REF`:** `2d7b9760323a9d5587712add4d8fe07a094fca15` (isonomic-sdk #4). **Spec:** isonomic-sdk `docs/interfaces/models.md`; every shape is a fixture in `crates/proto/fixtures/v0/models.jsonl`.
 
 **Moving `SDK_REF` to it:** `WireError` gains a `memory` field, so build errors with `WireError::new(code, message)` or `WireError::memory(refusal)`. `Call`, `Reply` and `ServerMessage` lose `Eq` (temperatures and vectors are floats).
 
