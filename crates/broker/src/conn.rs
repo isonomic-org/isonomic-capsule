@@ -5,8 +5,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use isonomic_proto::frame::FrameError;
-use isonomic_proto::io::{read_message, write_message};
+use isonomic_proto::io::{read_frame, write_message};
+use isonomic_proto::lenient::{decode_client, FromClient};
 use isonomic_proto::{
     negotiate, Call, ClientMessage, ErrorCode, Event, Outcome, Reply, ServerMessage, WireError,
 };
@@ -23,10 +23,7 @@ const DEFAULT_LOG_LINES: usize = 50;
 fn error(id: u64, code: ErrorCode, message: impl Into<String>) -> ServerMessage {
     ServerMessage::Response {
         id,
-        outcome: Outcome::Error(WireError {
-            code,
-            message: message.into(),
-        }),
+        outcome: Outcome::Error(WireError::new(code, message)),
     }
 }
 
@@ -75,19 +72,28 @@ pub(crate) async fn handle(stream: UnixStream, system: Arc<dyn System>) {
     let mut greeted = false;
 
     loop {
-        let message = match read_message::<_, ClientMessage>(&mut reader).await {
-            Ok(Some(message)) => message,
-            Ok(None) => break,
-            Err(FrameError::Json(bad)) => {
-                // The frame boundary is intact, so the connection can go on.
+        let body = match read_frame(&mut reader).await {
+            Ok(Some(body)) => body,
+            Ok(None) | Err(_) => break,
+        };
+        // The frame boundary is intact, so an unreadable message is answered
+        // and the connection goes on.
+        let message = match decode_client(&body) {
+            FromClient::Message(message) => message,
+            FromClient::Rejected { id, error } => {
+                let outcome = Outcome::Error(error);
+                let _ = outbox.send(ServerMessage::Response { id, outcome }).await;
+                continue;
+            }
+            FromClient::Garbage(error) => {
+                let outcome = Outcome::Error(error);
                 let _ = outbox
-                    .send(error(0, ErrorCode::BadRequest, bad.to_string()))
+                    .send(ServerMessage::Response { id: 0, outcome })
                     .await;
                 continue;
             }
-            Err(_) => break,
         };
-        let (id, call) = match message {
+        let (id, token, call) = match message {
             ClientMessage::Hello { versions, .. } => {
                 let Some(version) = negotiate(&versions, ENGINE_VERSIONS) else {
                     let text = format!("this engine speaks versions {ENGINE_VERSIONS:?}");
@@ -104,12 +110,20 @@ pub(crate) async fn handle(stream: UnixStream, system: Arc<dyn System>) {
                 let _ = outbox.send(welcome).await;
                 continue;
             }
-            ClientMessage::Request { id, call } => (id, call),
+            ClientMessage::Request { id, token, call } => (id, token, call),
         };
         if !greeted {
             let _ = outbox
                 .send(error(id, ErrorCode::HelloRequired, "send hello first"))
                 .await;
+            continue;
+        }
+
+        // No app has been granted a token yet (R1), so any token is unknown.
+        // The message never repeats the token.
+        if token.is_some() {
+            let text = "this token was never issued";
+            let _ = outbox.send(error(id, ErrorCode::UnknownToken, text)).await;
             continue;
         }
 
@@ -135,19 +149,19 @@ pub(crate) async fn handle(stream: UnixStream, system: Arc<dyn System>) {
                     task.abort();
                     Outcome::Result(Reply::Unsubscribed {})
                 }
-                None => Outcome::Error(WireError {
-                    code: ErrorCode::UnknownSubscription,
-                    message: format!("no subscription {subscription}"),
-                }),
+                None => Outcome::Error(WireError::new(
+                    ErrorCode::UnknownSubscription,
+                    format!("no subscription {subscription}"),
+                )),
             },
             Call::SystemLogs { service, limit } => {
                 let limit = limit.map(|n| n as usize).unwrap_or(DEFAULT_LOG_LINES);
                 match system.logs(&service, limit) {
                     Some(lines) => Outcome::Result(Reply::Logs { service, lines }),
-                    None => Outcome::Error(WireError {
-                        code: ErrorCode::UnknownService,
-                        message: format!("no service named {service}"),
-                    }),
+                    None => Outcome::Error(WireError::new(
+                        ErrorCode::UnknownService,
+                        format!("no service named {service}"),
+                    )),
                 }
             }
             Call::SystemProfile => Outcome::Result(Reply::Profile(system.profile())),
@@ -155,6 +169,10 @@ pub(crate) async fn handle(stream: UnixStream, system: Arc<dyn System>) {
                 then_shut_down = true;
                 Outcome::Result(Reply::ShuttingDown {})
             }
+            other => Outcome::Error(WireError::new(
+                ErrorCode::UnknownMethod,
+                format!("this engine does not serve {} yet", other.method()),
+            )),
         };
         let _ = outbox.send(ServerMessage::Response { id, outcome }).await;
         if let Some((subscription, task)) = then_forward {

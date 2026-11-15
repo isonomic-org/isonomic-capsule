@@ -100,7 +100,11 @@ impl Client {
     }
     async fn call(&mut self, call: Call) -> Outcome {
         self.1 += 1;
-        let request = ClientMessage::Request { id: self.1, call };
+        let request = ClientMessage::Request {
+            id: self.1,
+            token: None,
+            call,
+        };
         write_message(&mut self.0, &request).await.unwrap();
         match self.next().await {
             ServerMessage::Response { id, outcome } if id == self.1 => outcome,
@@ -205,6 +209,31 @@ async fn refuses_requests_before_hello_unknown_versions_and_garbage() {
     assert_eq!(error.code, ErrorCode::BadRequest);
     assert!(matches!(
         sloppy.call(Call::SystemStatus).await,
+        Outcome::Result(_)
+    ));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_newer_clients_unknown_method_is_answered_with_its_own_id() {
+    let (_dir, socket) = serve(Fake::new()).await;
+    let mut client = Client::greeted(&socket).await;
+    let body = br#"{"type":"request","id":41,"method":"system.teleport","params":{}}"#;
+    client
+        .0
+        .write_all(&(body.len() as u32).to_be_bytes())
+        .await
+        .unwrap();
+    client.0.write_all(body).await.unwrap();
+    let ServerMessage::Response {
+        id: 41,
+        outcome: Outcome::Error(error),
+    } = client.next().await
+    else {
+        panic!("expected an error for id 41")
+    };
+    assert_eq!(error.code, ErrorCode::UnknownMethod);
+    assert!(matches!(
+        client.call(Call::SystemStatus).await,
         Outcome::Result(_)
     ));
 }
