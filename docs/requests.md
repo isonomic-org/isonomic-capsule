@@ -2,6 +2,18 @@
 
 What the window's apps need from the engine, filed by the SDK session. Newest first. Each request names the SDK commit that brings its types. The in-memory engine in `isonomic-testkit` already behaves as described unless an item says otherwise, so the SDK's tests are the reference. When a request is done, add the engine commit that closes it.
 
+## R3 · Blob storage (`blobs` interface)
+
+**Status:** open. **Types:** isonomic-sdk #8 (`needs-master`); its changelog entry will name the `SDK_REF` commit. **Spec:** isonomic-sdk `docs/interfaces/blobs.md`; every shape is a fixture in `crates/proto/fixtures/v0/blobs.jsonl`.
+
+1. **Six methods:** `blobs.put`, `blobs.create`, `blobs.write`, `blobs.get`, `blobs.info`, `blobs.delete`, over the engine's content store. Bytes are base64 on the wire, at most `CHUNK_BYTES` (512 KiB) per call.
+2. **Limits.** `proto::auth::authorize` already refuses apps without the `blobs` capability and anything over the manifest's `max_bytes`. Apply the engine's own limit on top with `auth::too_large(size, limit)`, and refuse a chunk over `CHUNK_BYTES`.
+3. **Ownership.** A blob belongs to the app that stored it. Another app's handle answers `unknown_blob`, exactly as if it did not exist; the shell reads every blob. Handles are opaque and never derived from content.
+4. **Order.** `blobs.create` reserves the size; each `blobs.write` must start at the bytes written so far (`bad_request` otherwise) and may not pass the size (`too_large`). `blobs.get` before the last byte answers `incomplete`; afterwards it returns at most `CHUNK_BYTES` from `offset`.
+5. **Persist, then answer.** A write is acknowledged only once its bytes are durable, so a client that saw `written: n` can resume at `n` after a restart.
+
+**Check:** the SDK's `crates/testkit/tests/blobs.rs`: small and chunked round trips, ranges, ownership, both limits, half-written reads, out-of-order writes, and the capability check on every method.
+
 ## R2 · The model gateway (`models` interface)
 
 **Status:** open. **`SDK_REF`:** `2d7b9760323a9d5587712add4d8fe07a094fca15` (isonomic-sdk #4). **Spec:** isonomic-sdk `docs/interfaces/models.md`; every shape is a fixture in `crates/proto/fixtures/v0/models.jsonl`.
