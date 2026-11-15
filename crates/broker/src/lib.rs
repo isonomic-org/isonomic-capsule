@@ -3,11 +3,12 @@
 //! It serves the `system` interface (status of every service, a
 //! subscription to status changes, recent logs, the hardware profile and an
 //! ordered shutdown), the `apps` interface, which grants capability
-//! tokens, and the app interfaces: `blobs` so far. Every request is checked against its caller's token first.
+//! tokens, and the app interfaces: `blobs` and `events` so far. Every request is checked against its caller's token first.
 
 pub mod apps;
 pub mod blobs;
 mod conn;
+pub mod events;
 pub mod host;
 mod random;
 
@@ -20,6 +21,7 @@ use tokio::sync::broadcast;
 
 pub use apps::{Apps, TokenKey};
 pub use blobs::Blobs;
+pub use events::Events;
 pub use host::StackSystem;
 
 /// Protocol versions this engine speaks.
@@ -100,6 +102,7 @@ pub fn bind(socket: &Path) -> Result<EngineSocket, BindError> {
 pub struct Services {
     pub apps: Apps,
     pub blobs: Blobs,
+    pub events: Events,
 }
 
 /// Accept connections until the task is dropped.

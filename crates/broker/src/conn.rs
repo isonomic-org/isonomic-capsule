@@ -9,7 +9,8 @@ use isonomic_proto::auth::{authorize, Caller, Interface};
 use isonomic_proto::io::{read_frame, write_message};
 use isonomic_proto::lenient::{decode_client, FromClient};
 use isonomic_proto::{
-    negotiate, Call, ClientMessage, ErrorCode, Event, Outcome, Reply, ServerMessage, WireError,
+    negotiate, Call, ClientMessage, ErrorCode, Event, Outcome, Reply, ServerMessage, Token,
+    WireError,
 };
 use tokio::net::unix::OwnedWriteHalf;
 use tokio::net::UnixStream;
@@ -68,7 +69,9 @@ pub(crate) async fn handle(stream: UnixStream, system: Arc<dyn System>, services
     let (mut reader, writer) = stream.into_split();
     let (outbox, inbox) = mpsc::channel::<ServerMessage>(256);
     let writer_task = tokio::spawn(write_loop(writer, inbox));
-    let mut subscriptions: HashMap<u64, JoinHandle<()>> = HashMap::new();
+    // Each subscription remembers the token that opened it: only that
+    // caller may end it, even on the same connection.
+    let mut subscriptions: HashMap<u64, (JoinHandle<()>, Option<Token>)> = HashMap::new();
     let mut next_subscription: u64 = 1;
     let mut greeted = false;
 
@@ -149,6 +152,7 @@ pub(crate) async fn handle(stream: UnixStream, system: Arc<dyn System>, services
 
         let mut then_shut_down = false;
         let mut then_forward = None;
+        let mut then_listen = None;
         let outcome = match call {
             Call::SystemStatus => Outcome::Result(Reply::Status(system.status())),
             Call::SystemSubscribe => {
@@ -164,16 +168,20 @@ pub(crate) async fn handle(stream: UnixStream, system: Arc<dyn System>, services
                     snapshot: system.status(),
                 })
             }
-            Call::SystemUnsubscribe { subscription } => match subscriptions.remove(&subscription) {
-                Some(task) => {
-                    task.abort();
-                    Outcome::Result(Reply::Unsubscribed {})
+            Call::SystemUnsubscribe { subscription } | Call::EventsUnsubscribe { subscription } => {
+                match subscriptions.get(&subscription) {
+                    Some((_, owner)) if *owner == token => {
+                        if let Some((task, _)) = subscriptions.remove(&subscription) {
+                            task.abort();
+                        }
+                        Outcome::Result(Reply::Unsubscribed {})
+                    }
+                    _ => Outcome::Error(WireError::new(
+                        ErrorCode::UnknownSubscription,
+                        format!("no subscription {subscription}"),
+                    )),
                 }
-                None => Outcome::Error(WireError::new(
-                    ErrorCode::UnknownSubscription,
-                    format!("no subscription {subscription}"),
-                )),
-            },
+            }
             Call::SystemLogs { service, limit } => {
                 let limit = limit.map(|n| n as usize).unwrap_or(DEFAULT_LOG_LINES);
                 match system.logs(&service, limit) {
@@ -196,6 +204,30 @@ pub(crate) async fn handle(stream: UnixStream, system: Arc<dyn System>, services
                 }),
                 Err(error) => Outcome::Error(error),
             },
+            Call::EventsPublish {
+                topic,
+                data,
+                sender,
+                app,
+            } => {
+                let caller = manifest.as_ref().map(|m| m.id.as_str());
+                match services.events.publish(caller, app, topic, data, sender) {
+                    Ok(()) => Outcome::Result(Reply::Published {}),
+                    Err(error) => Outcome::Error(error),
+                }
+            }
+            Call::EventsSubscribe { topics, app } => {
+                let caller = manifest.as_ref().map(|m| m.id.as_str());
+                match services.events.subscribe(caller, app, topics) {
+                    Ok(listener) => {
+                        let subscription = next_subscription;
+                        next_subscription += 1;
+                        then_listen = Some((subscription, listener));
+                        Outcome::Result(Reply::Listening { subscription })
+                    }
+                    Err(error) => Outcome::Error(error),
+                }
+            }
             call if call.interface() == Interface::Blobs => {
                 let app = manifest.as_ref().map(|m| m.id.clone());
                 let services = Arc::clone(&services);
@@ -216,14 +248,19 @@ pub(crate) async fn handle(stream: UnixStream, system: Arc<dyn System>, services
         };
         let _ = outbox.send(ServerMessage::Response { id, outcome }).await;
         if let Some((subscription, task)) = then_forward {
-            subscriptions.insert(subscription, task);
+            subscriptions.insert(subscription, (task, token.clone()));
+        }
+        // The reply is out, so no event can arrive before it.
+        if let Some((subscription, listener)) = then_listen {
+            let task = listener.start(subscription, outbox.clone());
+            subscriptions.insert(subscription, (task, token.clone()));
         }
         if then_shut_down {
             system.request_shutdown();
         }
     }
 
-    for task in subscriptions.into_values() {
+    for (task, _) in subscriptions.into_values() {
         task.abort();
     }
     drop(outbox);

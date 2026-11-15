@@ -8,18 +8,12 @@
 
 use std::sync::Arc;
 
-use broker::{Apps, Blobs, Services, StackSystem, TokenKey};
+use broker::{Apps, Blobs, Events, Services, StackSystem, TokenKey};
 use capsule_core::{CapsulePaths, FixedHardware, Profile};
 use registry::GrantStore;
 
 /// Checks of interfaces the engine does not serve yet.
-const NOT_YET: &[&str] = &[
-    "events.round_trip",
-    "events.scoped",
-    "events.shell_reaches_app",
-    "subscriptions.owner_only",
-    "sql.schemas",
-];
+const NOT_YET: &[&str] = &["sql.schemas"];
 
 #[tokio::test(flavor = "multi_thread")]
 async fn the_engine_conforms() {
@@ -34,6 +28,7 @@ async fn the_engine_conforms() {
             TokenKey::load_or_create(&paths.token_key()).unwrap(),
         ),
         blobs: Blobs::open(&paths.blobs_dir(), &paths.registry_db()).unwrap(),
+        events: Events::default(),
     };
     let socket = paths.engine_socket();
     let bound = broker::bind(&socket).unwrap();
