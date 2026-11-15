@@ -39,7 +39,7 @@ What the window's apps need from the engine, filed by the SDK session. Newest fi
 
 ## R3 · Blob storage (`blobs` interface)
 
-**Status:** open. **`SDK_REF`:** `faddbf121ca2ab403140cc5e529c093fa996fbf3` (isonomic-sdk #8). **Spec:** isonomic-sdk `docs/interfaces/blobs.md`; every shape is a fixture in `crates/proto/fixtures/v0/blobs.jsonl`.
+**Status:** done (engine PR #30; see `docs/status.md`). **`SDK_REF`:** `faddbf121ca2ab403140cc5e529c093fa996fbf3` (isonomic-sdk #8). **Spec:** isonomic-sdk `docs/interfaces/blobs.md`; every shape is a fixture in `crates/proto/fixtures/v0/blobs.jsonl`.
 
 1. **Six methods:** `blobs.put`, `blobs.create`, `blobs.write`, `blobs.get`, `blobs.info`, `blobs.delete`, over the engine's content store. Bytes are base64 on the wire, at most `CHUNK_BYTES` (512 KiB) per call.
 2. **Limits.** `proto::auth::authorize` already refuses apps without the `blobs` capability and anything over the manifest's `max_bytes`. Apply the engine's own limit on top with `auth::too_large(size, limit)`, and refuse a chunk over `CHUNK_BYTES`.

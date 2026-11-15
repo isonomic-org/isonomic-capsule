@@ -64,6 +64,7 @@ dependencies = [
  "isonomic-proto",
  "libc",
  "registry",
+ "rusqlite",
  "serde_json",
  "sha2",
  "supervisor",

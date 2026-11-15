@@ -10,6 +10,7 @@ capsule-core.workspace = true
 isonomic-proto.workspace = true
 libc.workspace = true
 registry.workspace = true
+rusqlite.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 supervisor.workspace = true

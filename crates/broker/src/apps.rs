@@ -51,11 +51,7 @@ impl TokenKey {
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir)?;
         }
-        let mut key = [0u8; KEY_BYTES];
-        {
-            use std::io::Read;
-            std::fs::File::open("/dev/urandom")?.read_exact(&mut key)?;
-        }
+        let key = crate::random::bytes::<KEY_BYTES>()?;
         let mut file = {
             use std::os::unix::fs::OpenOptionsExt;
             std::fs::OpenOptions::new()
@@ -87,9 +83,7 @@ impl TokenKey {
     }
 }
 
-fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
-}
+use crate::random::hex;
 
 /// What the registry stores for a token: enough to recognise it, useless
 /// for making calls.

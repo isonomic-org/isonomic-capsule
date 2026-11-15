@@ -126,11 +126,15 @@ async fn serve(system: Arc<dyn System>) -> (tempfile::TempDir, PathBuf) {
     let dir = tempfile::tempdir().unwrap();
     let socket = dir.path().join("run/engine.sock");
     let bound = broker::bind(&socket).unwrap();
-    let apps = broker::Apps::new(
-        registry::GrantStore::in_memory().unwrap(),
-        broker::TokenKey::fixed([7; 32]),
-    );
-    tokio::spawn(broker::serve(bound, system, Arc::new(apps)));
+    let services = broker::Services {
+        apps: broker::Apps::new(
+            registry::GrantStore::in_memory().unwrap(),
+            broker::TokenKey::fixed([7; 32]),
+        ),
+        blobs: broker::Blobs::open(&dir.path().join("blobs"), &dir.path().join("registry.db"))
+            .unwrap(),
+    };
+    tokio::spawn(broker::serve(bound, system, Arc::new(services)));
     (dir, socket)
 }
 
