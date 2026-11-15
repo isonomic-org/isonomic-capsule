@@ -4,7 +4,7 @@ Newest first. The host for agent sessions (`crates/agents`), over the harness ho
 
 ## 2026-11-15 · Agents: the host's (session, id) keys (isonomic-harness #37)
 
-- Built and tested against harness main `f061211` (#37 merged). The pin moves with the SDK commit that carries the same rev.
+- `SDK_REF` is `c0d2bf7`, and every harness crate is pinned to `f0612113`, the same URL and rev string as the SDK's, so cargo builds one copy.
 - `approvals.decide`, `questions.answer` and `tools.result` pass the wire's `session` to the host, which now keys pending work by (session, id); the adapter's own checks of the pair are gone, except for a tool result: the host answers a late result for a call id never issued with `Ok` and an audit record, so the adapter still looks for the call in the session's log and answers `not_found` otherwise. `sessions.purge` passes the app (the caller's own, or the one the shell names). User-action tokens are minted and checked per (session, approval).
 - Streams await `Subscription::next_update()`, durable events and live deltas alike, so the 40 ms drain is gone (isonomic-harness #32).
 - `apps.grant` refuses the app id `shell`, which owns the shell's own sessions.
