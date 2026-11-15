@@ -53,8 +53,18 @@ impl Sql {
     }
 
     /// An app's approval changed: set its database access up again.
-    pub fn granted(&self, app: &str) {
-        self.db.forget(app);
+    /// An app was granted: set its database access up again, now, in the
+    /// background (the reply does not wait; a statement would do it anyway).
+    pub fn granted(&self, manifest: &Manifest) {
+        self.db.forget(&manifest.id);
+        if manifest.capabilities.sql.is_none() && manifest.schemas.is_empty() {
+            return;
+        }
+        let db = Arc::clone(&self.db);
+        let manifest = manifest.clone();
+        tokio::spawn(async move {
+            let _ = db.prepare(&manifest).await;
+        });
     }
 
     /// Answer one sql call for `manifest` (`None` is the shell). The caller

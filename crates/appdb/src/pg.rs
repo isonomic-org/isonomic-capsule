@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex as SyncMutex};
 
 use isonomic_proto::sql::{Column, Statement};
-use isonomic_proto::{ErrorCode, Rows, SqlValue, WireError};
+use isonomic_proto::{ErrorCode, Manifest, Rows, SqlValue, WireError};
 use tokio::sync::{broadcast, Mutex, OnceCell};
 use tokio_postgres::types::ToSql;
 use tokio_postgres::{Client, Config, NoTls, Transaction};
@@ -301,5 +301,9 @@ impl Database for PgDatabase {
 
     fn written(&self) -> broadcast::Receiver<()> {
         self.written.subscribe()
+    }
+
+    fn prepare<'a>(&'a self, manifest: &'a Manifest) -> BoxFuture<'a, Result<(), WireError>> {
+        Box::pin(async move { self.role_for(Runner::App(manifest)).await.map(|_| ()) })
     }
 }

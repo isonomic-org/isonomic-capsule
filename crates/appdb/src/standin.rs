@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use isonomic_proto::sql::Statement;
-use isonomic_proto::{Rows, SqlValue, WireError};
+use isonomic_proto::{Manifest, Rows, SqlValue, WireError};
 
 use crate::{BoxFuture, Database, Runner};
 
@@ -17,6 +17,7 @@ pub type Ran = (Option<String>, String, String);
 pub struct StandIn {
     scripted: Mutex<HashMap<String, Rows>>,
     ran: Mutex<Vec<Ran>>,
+    prepared: Mutex<Vec<String>>,
     written: tokio::sync::broadcast::Sender<()>,
 }
 
@@ -25,6 +26,7 @@ impl Default for StandIn {
         Self {
             scripted: Mutex::default(),
             ran: Mutex::default(),
+            prepared: Mutex::default(),
             written: tokio::sync::broadcast::channel(64).0,
         }
     }
@@ -34,6 +36,11 @@ impl StandIn {
     /// Answer `sql` with `rows` from now on.
     pub fn respond(&self, sql: &str, rows: Rows) {
         self.scripted.lock().unwrap().insert(sql.to_string(), rows);
+    }
+
+    /// The apps prepared so far, oldest first.
+    pub fn prepared(&self) -> Vec<String> {
+        self.prepared.lock().unwrap().clone()
     }
 
     /// Every statement so far, oldest first.
@@ -91,6 +98,11 @@ impl Database for StandIn {
     }
 
     fn forget(&self, _: &str) {}
+
+    fn prepare<'a>(&'a self, manifest: &'a Manifest) -> BoxFuture<'a, Result<(), WireError>> {
+        self.prepared.lock().unwrap().push(manifest.id.clone());
+        Box::pin(async { Ok(()) })
+    }
 
     /// Ticks after every `execute` and `batch` (reads change nothing here).
     fn written(&self) -> tokio::sync::broadcast::Receiver<()> {

@@ -211,7 +211,7 @@ pub(crate) async fn handle(stream: UnixStream, system: Arc<dyn System>, services
             }
             Call::AppsGrant { manifest } => match services.apps.grant(&manifest) {
                 Ok(token) => {
-                    services.sql.granted(&manifest.id);
+                    services.sql.granted(&manifest);
                     Outcome::Result(Reply::Granted {
                         app: manifest.id,
                         token,

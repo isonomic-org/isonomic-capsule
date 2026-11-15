@@ -12,6 +12,11 @@ Newest first. This file is the engine's status from now on. The history of each 
 
 New entries go at the top of this file, naming the area; older ones move to their area's file when this one nears 20 KB. The spec stays in `isonomic-desktop/docs/architecture/`.
 
+## 2026-11-15 · `appdb`: an app's schemas are made when it is granted
+
+- `apps.grant` now sets the app's role, schemas and read access up right away, in the background after the reply, so the reply never waits on the database and a grant still succeeds while it starts. The setup before an app's first statement stays as the backstop.
+- Checked with Chat's own manifest (`agents`, `sql`, schema `chat`): hermetically, the grant prepares it; on a real PostgreSQL 16, the `chat` schema exists owned by Chat's role, and Chat's `create table if not exists pins (… timestamptz …)`, insert and read work there.
+
 ## 2026-11-15 · Agents and gateway: a better first answer from small models; timed turns
 
 - Why the 0.8B model refused "plan one day in Lisbon" on the Intel Mac, found by replaying the exact request against the same llama.cpp build and model here (4 cores): the request context ("Current date: …") arrived glued to the person's words in the user turn, and the persona says to ask when a request is unclear. Mostly, though, it is the model: in 36 replies the 0.8B model attempted the plan five times in six but invented places that are not in Lisbon, and refused or asked to clarify about one time in six, wherever the context sat. Qwen3.5 2B named real places in every reply and refused once in 24, never once the context moved.

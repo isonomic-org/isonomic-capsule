@@ -72,6 +72,11 @@ pub trait Database: Send + Sync + 'static {
     /// Ticks after every committed transaction that wrote, whichever
     /// method or engine path ran it.
     fn written(&self) -> tokio::sync::broadcast::Receiver<()>;
+
+    /// Set an app's role, schemas and read access up now, as its approval
+    /// stands. Statements do it themselves when it has not happened, so a
+    /// failure here (the database still starting) costs nothing.
+    fn prepare<'a>(&'a self, manifest: &'a Manifest) -> BoxFuture<'a, Result<(), WireError>>;
 }
 
 /// The database refused, with its own message.
