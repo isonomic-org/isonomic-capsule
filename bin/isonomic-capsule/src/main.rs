@@ -97,9 +97,11 @@ async fn run() -> Result<(), AnyError> {
     }
     let mut service = prepared.config;
     service.logs_dir = Some(paths.logs_dir());
+    service.pid_file = Some(paths.run_dir().join("postgres.pid"));
     cache::prepare(&cache_layout).await?;
     let mut cache_service = cache::service(&cache_layout, profile, ChildEnv::minimal());
     cache_service.logs_dir = Some(paths.logs_dir());
+    cache_service.pid_file = Some(paths.run_dir().join("cache.pid"));
 
     // The RAM gate sees the chosen profile, override included, and reads free
     // memory at each gated start.

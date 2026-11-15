@@ -98,6 +98,9 @@ pub struct ServiceConfig {
     pub stop_signal: StopSignal,
     /// How long the service gets to exit on its own before it is killed.
     pub stop_grace: Duration,
+    /// Where the running pid is noted, so the next engine can stop a service
+    /// this one left behind (`orphan`). `None` keeps no record.
+    pub pid_file: Option<PathBuf>,
 }
 
 impl ServiceConfig {
@@ -121,6 +124,7 @@ impl ServiceConfig {
             config_files: Vec::new(),
             stop_signal: StopSignal::Term,
             stop_grace: DEFAULT_STOP_GRACE,
+            pid_file: None,
         }
     }
 
@@ -318,6 +322,13 @@ impl ServiceSupervisor {
         let generation = self.shared.generation.load(Ordering::SeqCst);
         self.shared.set_state(ServiceState::Starting);
 
+        if let Some(old) = crate::orphan::reap(&self.shared.config).await {
+            self.shared.logs.append(&format!(
+                "stopped {} left running by an earlier engine (pid {old})",
+                self.shared.config.name
+            ));
+        }
+
         let (mut child, pid) = spawn_child(&self.shared, &addr)
             .map_err(|e| ServiceError::Spawn(self.shared.config.name.clone(), e))?;
         ctl.pid = Some(pid);
@@ -409,6 +420,7 @@ async fn stop_with(shared: &Arc<Shared>, control: &Arc<Mutex<ControlState>>) {
         terminate_group(pid, shared.config.stop_signal, shared.config.stop_grace).await;
     }
     shared.pgid.store(0, Ordering::SeqCst);
+    crate::orphan::forget(&shared.config);
     shared.set_state(ServiceState::Stopped);
 }
 

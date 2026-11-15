@@ -167,6 +167,7 @@ pub(crate) fn spawn_child(shared: &Arc<Shared>, addr: &Endpoint) -> std::io::Res
     cmd.kill_on_drop(true);
     let mut child = cmd.spawn()?;
     let pid = child.id().unwrap_or(0);
+    crate::orphan::record(config, pid);
     if let Some(stdout) = child.stdout.take() {
         spawn_log_pump(Arc::clone(&shared.logs), stdout, "stdout");
     }
