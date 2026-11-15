@@ -11,6 +11,7 @@ pub mod env;
 pub mod health;
 pub mod logsink;
 mod monitor;
+mod orphan;
 pub mod postgres;
 pub mod probe;
 pub mod service;

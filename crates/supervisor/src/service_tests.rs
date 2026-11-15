@@ -349,3 +349,78 @@ async fn a_child_sees_only_allow_listed_variables() {
     assert_eq!(get("SERVICE_ROLE").as_deref(), Some("primary"));
     sup.stop().await;
 }
+
+/// A real program under the service's name (a copy of `sleep`): a script
+/// would show up as the shell, not as the service.
+fn sleeper(dir: &std::path::Path, name: &str) -> PathBuf {
+    let path = dir.join(name);
+    std::fs::copy("/bin/sleep", &path).unwrap();
+    path
+}
+
+/// Start `program` the way an earlier engine did (its own process group)
+/// and reap it when it exits, so a stopped one doesn't linger as a zombie.
+fn earlier_engines(program: &std::path::Path) -> u32 {
+    use std::os::unix::process::CommandExt;
+    let mut child = std::process::Command::new(program)
+        .arg("30")
+        .process_group(0)
+        .spawn()
+        .unwrap();
+    let pid = child.id();
+    std::thread::spawn(move || {
+        let _ = child.wait();
+    });
+    pid
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_service_left_running_by_an_earlier_engine_is_stopped_first() {
+    let dir = tempfile::tempdir().unwrap();
+    let (addr, _server) = spawn_pong_server().await;
+    let program = sleeper(dir.path(), "cache-server");
+    let old = earlier_engines(&program);
+    let pid_file = dir.path().join("run").join("cache.pid");
+    std::fs::create_dir_all(pid_file.parent().unwrap()).unwrap();
+    std::fs::write(&pid_file, format!("{old}\n")).unwrap();
+
+    let (mut config, _) = test_config(program, addr.port(), false);
+    config.args = vec!["30".to_string()];
+    config.pid_file = Some(pid_file.clone());
+    let sup = ServiceSupervisor::new(config, None);
+    sup.start().await.unwrap();
+
+    assert!(wait_until_gone(old, Duration::from_secs(5)).await);
+    assert!(sup
+        .last_logs()
+        .iter()
+        .any(|line| line.contains(&format!("left running by an earlier engine (pid {old})"))));
+    let new = sup.pid().await.unwrap();
+    assert_ne!(new, old);
+    let noted = std::fs::read_to_string(&pid_file).unwrap();
+    assert_eq!(noted.trim(), new.to_string());
+
+    sup.stop().await;
+    assert!(!pid_file.exists(), "a deliberate stop leaves no record");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_reused_pid_running_something_else_is_left_alone() {
+    let dir = tempfile::tempdir().unwrap();
+    let (addr, _server) = spawn_pong_server().await;
+    let stranger = earlier_engines(&sleeper(dir.path(), "someone-else"));
+    let pid_file = dir.path().join("cache.pid");
+    std::fs::write(&pid_file, format!("{stranger}\n")).unwrap();
+
+    let (mut config, _) = test_config(sleeper(dir.path(), "cache-server"), addr.port(), false);
+    config.args = vec!["30".to_string()];
+    config.pid_file = Some(pid_file);
+    let sup = ServiceSupervisor::new(config, None);
+    sup.start().await.unwrap();
+
+    assert!(!wait_until_gone(stranger, Duration::from_millis(300)).await);
+    sup.stop().await;
+    unsafe {
+        libc::kill(stranger as libc::pid_t, libc::SIGKILL);
+    }
+}
