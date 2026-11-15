@@ -4,7 +4,7 @@ What the window's apps need from the engine, filed by the SDK session. Newest fi
 
 ## R7 · Identity: the Isonomic ID, grants and the check function
 
-**Status:** open. **From:** isonomic-id. **`ID_REF`:** `c67932dffd4c776988cdeb5d0d87870a32c0ad16`. **Spec:** isonomic-id `docs/spec.md` (version 1, frozen); reference bytes in `vectors/v1/vectors.txt`.
+**Status:** open. **From:** isonomic-id. **`ID_REF`:** `d39a507e2902b0b5d3de3cbe096f278ba77a5396`. **Spec:** isonomic-id `docs/spec.md` (version 1, frozen); reference bytes in `vectors/v1/vectors.txt`.
 
 The window's protocol does not change: app tokens stay as R1 describes. What changes is what stands behind them.
 
