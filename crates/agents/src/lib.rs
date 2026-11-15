@@ -7,11 +7,13 @@
 
 mod convert;
 pub mod deps;
+mod model;
 mod scopes;
 mod service;
 mod start;
 mod store;
 
+pub use model::GatewayModel;
 pub use scopes::{EngineScopes, USER_ACTION_TTL_SECS};
 pub use service::{EngineAgents, DELTA_TICK};
 pub use start::{start, Parts};

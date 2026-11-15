@@ -59,6 +59,11 @@ impl CapsulePaths {
         self.root.join("secrets").join("token.key")
     }
 
+    /// Where downloaded local models are kept, one file per model.
+    pub fn models_dir(&self) -> PathBuf {
+        self.root.join("models")
+    }
+
     /// Where apps' blobs are stored, one file per blob.
     pub fn blobs_dir(&self) -> PathBuf {
         self.root.join("blobs")

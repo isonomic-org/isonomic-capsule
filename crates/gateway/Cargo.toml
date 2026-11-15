@@ -1,0 +1,25 @@
+[package]
+name = "gateway"
+description = "The Isonomic Capsule's model gateway: local models through isonomic-inference, behind the engine's memory gate"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+broker.workspace = true
+capsule-core.workspace = true
+futures-util.workspace = true
+isonomic-inference-core.workspace = true
+isonomic-llama.workspace = true
+isonomic-model-library.workspace = true
+isonomic-proto.workspace = true
+isonomic-provider.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+isonomic-client.workspace = true
+isonomic-inference-testkit.workspace = true
+registry.workspace = true
+supervisor.workspace = true
+tempfile.workspace = true
+appdb.workspace = true
