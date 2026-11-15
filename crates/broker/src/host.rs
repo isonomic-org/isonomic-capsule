@@ -111,7 +111,14 @@ impl System for StackSystem {
     fn status(&self) -> proto::SystemStatus {
         // Read each service once, then derive the light from those same
         // readings, so the two can never disagree.
-        let members = self.stack.services();
+        // A lazy service that has not been started is idle, not down: it is
+        // listed once it runs (the SDK's light counts every listed service).
+        let members: Vec<_> = self
+            .stack
+            .services()
+            .into_iter()
+            .filter(|(_, tier, s)| !supervisor::stack::idle_lazy(*tier, s.state()))
+            .collect();
         let states: Vec<ServiceState> = members.iter().map(|(_, _, s)| s.state()).collect();
         let services = members
             .iter()
