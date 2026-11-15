@@ -112,11 +112,31 @@ async fn run() -> Result<(), AnyError> {
     let stack = Arc::new(stack);
 
     let system = StackSystem::new(Arc::clone(&stack), Some(registry), hardware, profile);
-    let services = broker::Services {
-        apps: Arc::new(broker::Apps::new(
-            registry::GrantStore::open(&paths.registry_db())?,
-            broker::TokenKey::load_or_create(&paths.token_key())?,
+    let apps = Arc::new(broker::Apps::new(
+        registry::GrantStore::open(&paths.registry_db())?,
+        broker::TokenKey::load_or_create(&paths.token_key())?,
+    ));
+    // The agents host. Until the model gateway lands, every turn fails with
+    // a readable "no model" error in the session's log.
+    let locale = agents::deps::EngineLocale::from_system();
+    log(format!(
+        "locale: {} ({} min), {}",
+        locale.zone, locale.offset_minutes, locale.language
+    ));
+    let host = agents::start(agents::Parts {
+        store: Arc::new(agents::SqliteSessionStore::open(&paths.registry_db())?),
+        scopes: Arc::new(agents::EngineScopes::new(
+            Arc::clone(&apps),
+            Arc::new(capsule_core::SystemClock),
         )),
+        model: Arc::new(agents::deps::NoModel),
+        locale,
+        profile,
+    })
+    .await
+    .map_err(|e| format!("the agents host did not start: {e:?}"))?;
+    let services = broker::Services {
+        apps,
         blobs: broker::Blobs::open(&paths.blobs_dir(), &paths.registry_db())
             .map_err(|e| e.message)?,
         events: broker::Events::default(),
@@ -126,6 +146,7 @@ async fn run() -> Result<(), AnyError> {
             postgres::SUPERUSER,
             postgres::DATABASE,
         ))),
+        agents: Arc::new(host),
     };
     let server = tokio::spawn(broker::serve(listener, system.clone(), Arc::new(services)));
 

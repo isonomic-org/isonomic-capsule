@@ -1,36 +1,53 @@
 //! The SDK's conformance checks against a test engine in a temporary
 //! Capsule directory: the real broker, a real registry, token key and blob
-//! store on disk. Never a user's Capsule.
+//! store on disk, and the agents host over the engine's session log with a
+//! scripted model (no check needs a model's words). Never a user's Capsule.
 //!
 //! The hermetic run puts the apps' database behind a stand-in that runs no
 //! SQL; the schema rules the `sql.schemas` check probes are decided above
 //! it. The opt-in run starts a real database server the way the engine
 //! does and runs every check against it:
 //!
-//!     ISONOMIC_TEST_POSTGRES_BIN=<bin dir> cargo test -p broker --test conformance -- --ignored
+//!     ISONOMIC_TEST_POSTGRES_BIN=<bin dir> cargo test -p agents --test conformance -- --ignored
 //!
 //! (The server refuses to run as root.) Every check must pass.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use agents::{deps::EngineLocale, EngineScopes, Parts, SqliteSessionStore};
 use appdb::{Database, PgDatabase, StandIn};
 use broker::{Apps, Blobs, Events, Services, Sql, StackSystem, TokenKey};
-use capsule_core::{CapsulePaths, FixedHardware, Profile, Tier};
+use capsule_core::{CapsulePaths, FixedHardware, Profile, SystemClock, Tier};
+use harness_host::ScriptedModel;
 use registry::GrantStore;
 use supervisor::{postgres, ChildEnv, Stack};
 
 async fn conform(paths: &CapsulePaths, stack: Arc<Stack>, db: Arc<dyn Database>) {
     let hardware = Arc::new(FixedHardware::with_total(16 << 30));
     let system = StackSystem::new(stack, None, hardware, Profile::Standard);
+    let apps = Arc::new(Apps::new(
+        GrantStore::open(&paths.registry_db()).unwrap(),
+        TokenKey::load_or_create(&paths.token_key()).unwrap(),
+    ));
+    let parts = Parts {
+        store: Arc::new(SqliteSessionStore::open(&paths.registry_db()).unwrap()),
+        scopes: Arc::new(EngineScopes::new(Arc::clone(&apps), Arc::new(SystemClock))),
+        model: Arc::new(ScriptedModel::default()),
+        locale: EngineLocale {
+            zone: "UTC".into(),
+            offset_minutes: 0,
+            language: "en".into(),
+        },
+        profile: Profile::Standard,
+    };
+    let host = agents::start(parts).await.unwrap();
     let services = Services {
-        apps: Arc::new(Apps::new(
-            GrantStore::open(&paths.registry_db()).unwrap(),
-            TokenKey::load_or_create(&paths.token_key()).unwrap(),
-        )),
+        apps,
         blobs: Blobs::open(&paths.blobs_dir(), &paths.registry_db()).unwrap(),
         events: Events::default(),
         sql: Sql::new(db),
+        agents: Arc::new(host),
     };
     let socket = paths.engine_socket();
     let bound = broker::bind(&socket).unwrap();

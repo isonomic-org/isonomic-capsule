@@ -11,11 +11,18 @@ Newest first. This file is the engine's status from now on. The history of each 
 
 New entries go at the top of this file, naming the area. The spec stays in `isonomic-desktop/docs/architecture/`.
 
-## 2026-11-15 · Broker: the SDK pin moves to the agents interface
+## 2026-11-15 · Agents: the `agents` interface served by the harness host
 
-- `SDK_REF` is `1b9fe35` (isonomic-sdk #16, the agents interface). The SDK pins harness-core at the same URL and rev as this repo (`7a73ca6`), so cargo builds one copy.
-- `welcome` carries `schema`: the session event schema the agents host writes (`SchemaVersion::CURRENT`).
-- The 22 `agents` methods are refused to apps without the `agents` capability by `proto::auth`, and answered `unknown_method` otherwise until the adapter serves them. Conformance still passes every check at this pin.
+- `SDK_REF` is `21ed50d` (isonomic-sdk #16 and #19: the agents interface and the `agents.` conformance checks). The SDK pins harness-core at the same URL and rev as this repo (`7a73ca6`). `welcome` carries `schema`, the session event schema the host writes.
+- The broker hands every `agents` call, after the token and capability checks, to `broker::Agents`; `agents::EngineAgents` implements it over the harness host. Each of the 22 methods maps one to one onto a host call. `sessions.subscribe` replays the durable log after `from_seq`, then live events, as `session_event` and `live_delta` events; only the opening token ends it.
+- The host is built from the engine's parts (`agents::start`): the SQLite session log, the token resolver over `broker::Apps`, Tokio for background work, the wall clock, and the system's locale (zone from `/etc/localtime`, offset from the C library, language from `LANG`). Limits and the policy ceiling are the harness defaults. `recover()` seals turns a previous engine left open before the broker serves.
+- (session, id) is checked in the adapter for `approvals.decide`, `questions.answer` and `tools.result`, since the host takes the id alone (isonomic-harness #30). The shell's purge names an app and runs as that app.
+- Conformance: **28 of 28**, the six `agents.` checks included, against the real agents host with a scripted model. End-to-end tests drive a Chat turn over the socket: the reply streams, the log replays from the store, another app's session answers `not_found`, purge is per app, stop is safe to repeat.
+- Deviations:
+  - Live deltas do not wake a subscriber in the host (isonomic-harness #32), so a stream also drains them every 40 ms.
+  - The engine binary runs the host with no model until the gateway lands: a turn ends with a readable `model_unavailable` error in the log.
+  - Client tools are refused and attachments are kept in memory; V1 Chat uses neither.
+  - The engine's profiles have no `intel` tier yet, so Intel Macs run under `low`, `standard` or `high` by memory.
 
 ## 2026-11-15 · Engine: stays headless as apps get their UI through the SDK
 

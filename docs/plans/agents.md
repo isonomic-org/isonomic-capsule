@@ -1,6 +1,6 @@
 # Plan: the agents adapter (`crates/agents`)
 
-Status: preparation. Nothing here depends on isonomic-sdk #16 until the orchestrator says it has merged; #16 is being revised (`approvals.decide`, `questions.answer` and `tools.result` gain `session`; `welcome` gains a required `schema`), so no code is built against its current shapes.
+Status: served (see `docs/status.md`); the model client waits on the gateway.
 
 ## What it is
 
@@ -30,5 +30,5 @@ Engine lifecycle: `Host::new(Deps, HostConfig)` at start, `recover()` before the
 
 1. `SessionStore` on SQLite. **Done.**
 2. `ScopeResolver` over `broker::Apps`, and user-action tokens. **Done.**
-3. Once #16 merges and the orchestrator says so: move `SDK_REF`, send `welcome.schema`, serve the 22 `agents` methods, run the `agents.` conformance group.
+3. Move `SDK_REF`, send `welcome.schema`, serve the 22 `agents` methods, run the `agents.` conformance group. **Done.**
 4. `ModelClient` once the gateway exists; then one real Chat turn end to end.

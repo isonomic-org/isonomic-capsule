@@ -5,6 +5,7 @@
 //! ordered shutdown), the `apps` interface, which grants capability
 //! tokens, and the app interfaces: `blobs`, `events` and `sql`. Every request is checked against its caller's token first.
 
+pub mod agents;
 pub mod apps;
 pub mod blobs;
 mod conn;
@@ -20,6 +21,7 @@ use isonomic_proto::{HardwareProfile, ServiceStatus, SystemStatus};
 use tokio::net::UnixListener;
 use tokio::sync::broadcast;
 
+pub use agents::{Agents, AgentsAnswer, NoAgents};
 pub use apps::{Apps, TokenKey};
 pub use blobs::Blobs;
 pub use events::Events;
@@ -107,6 +109,7 @@ pub struct Services {
     pub blobs: Blobs,
     pub events: Events,
     pub sql: Sql,
+    pub agents: Arc<dyn Agents>,
 }
 
 /// Accept connections until the task is dropped.

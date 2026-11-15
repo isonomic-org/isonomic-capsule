@@ -18,13 +18,11 @@ use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
+use crate::agents::{AgentsAnswer, Starter};
 use crate::sql::Answer;
 use crate::{Services, System, ENGINE_VERSIONS};
 
 const DEFAULT_LOG_LINES: usize = 50;
-
-/// Starts a subscription's forwarding task, given its id and the outbox.
-type Starter = Box<dyn FnOnce(u64, mpsc::Sender<ServerMessage>) -> JoinHandle<()> + Send>;
 
 fn error(id: u64, code: ErrorCode, message: impl Into<String>) -> ServerMessage {
     ServerMessage::Response {
@@ -177,18 +175,21 @@ pub(crate) async fn handle(stream: UnixStream, system: Arc<dyn System>, services
             }
             Call::SystemUnsubscribe { subscription }
             | Call::EventsUnsubscribe { subscription }
-            | Call::SqlUnsubscribe { subscription } => match subscriptions.get(&subscription) {
-                Some((_, owner)) if *owner == token => {
-                    if let Some((task, _)) = subscriptions.remove(&subscription) {
-                        task.abort();
+            | Call::SqlUnsubscribe { subscription }
+            | Call::SessionsUnsubscribe { subscription } => {
+                match subscriptions.get(&subscription) {
+                    Some((_, owner)) if *owner == token => {
+                        if let Some((task, _)) = subscriptions.remove(&subscription) {
+                            task.abort();
+                        }
+                        Outcome::Result(Reply::Unsubscribed {})
                     }
-                    Outcome::Result(Reply::Unsubscribed {})
+                    _ => Outcome::Error(WireError::new(
+                        ErrorCode::UnknownSubscription,
+                        format!("no subscription {subscription}"),
+                    )),
                 }
-                _ => Outcome::Error(WireError::new(
-                    ErrorCode::UnknownSubscription,
-                    format!("no subscription {subscription}"),
-                )),
-            },
+            }
             Call::SystemLogs { service, limit } => {
                 let limit = limit.map(|n| n as usize).unwrap_or(DEFAULT_LOG_LINES);
                 match system.logs(&service, limit) {
@@ -214,6 +215,18 @@ pub(crate) async fn handle(stream: UnixStream, system: Arc<dyn System>, services
                 }
                 Err(error) => Outcome::Error(error),
             },
+            call if call.interface() == Interface::Agents => {
+                match services.agents.answer(manifest.as_ref(), call).await {
+                    Ok(AgentsAnswer::Reply(reply)) => Outcome::Result(reply),
+                    Ok(AgentsAnswer::Stream(start)) => {
+                        let subscription = next_subscription;
+                        next_subscription += 1;
+                        then_listen = Some((subscription, start));
+                        Outcome::Result(Reply::SessionStream { subscription })
+                    }
+                    Err(error) => Outcome::Error(error),
+                }
+            }
             call if call.interface() == Interface::Sql => {
                 match services.sql.answer(manifest.as_ref(), call).await {
                     Ok(Answer::Reply(reply)) => Outcome::Result(reply),
