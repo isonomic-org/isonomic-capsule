@@ -116,3 +116,13 @@ fn tokens_survive_a_restart() {
     let restarted = open();
     assert_eq!(restarted.manifest(&token).unwrap(), manifest());
 }
+
+#[test]
+fn the_shells_own_app_id_is_never_granted() {
+    let apps = apps(1);
+    let mut shell = manifest();
+    shell.id = RESERVED_SHELL_ID.into();
+    let error = apps.grant(&shell).unwrap_err();
+    assert_eq!(error.code, ErrorCode::InvalidManifest);
+    assert!(error.message.contains("reserved"), "{}", error.message);
+}

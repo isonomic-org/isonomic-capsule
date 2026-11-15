@@ -26,6 +26,10 @@ fn manifest(id: &str) -> Manifest {
     }
 }
 
+fn session(id: &str) -> SessionId {
+    serde_json::from_value(serde_json::json!(id)).unwrap()
+}
+
 fn approval(id: &str) -> ApprovalId {
     serde_json::from_value(serde_json::json!(id)).unwrap()
 }
@@ -61,30 +65,34 @@ fn a_user_action_works_once_for_its_caller_and_approval_only() {
     let chat = Caller::app("com.isonomic.chat", AppKind::FirstParty);
     let notes = Caller::app("com.isonomic.notes", AppKind::FirstParty);
     let (a, b) = (approval("apr_1"), approval("apr_2"));
+    let s1 = session("ses_1");
 
-    let token = scopes.mint(&chat, &a).unwrap();
-    assert!(scopes.verify_user_action(&chat, &token, &a));
-    assert!(!scopes.verify_user_action(&chat, &token, &a), "used twice");
-
-    let token = scopes.mint(&chat, &a).unwrap();
+    let token = scopes.mint(&chat, &s1, &a).unwrap();
+    assert!(scopes.verify_user_action(&chat, &token, &s1, &a));
     assert!(
-        !scopes.verify_user_action(&chat, &token, &b),
+        !scopes.verify_user_action(&chat, &token, &s1, &a),
+        "used twice"
+    );
+
+    let token = scopes.mint(&chat, &s1, &a).unwrap();
+    assert!(
+        !scopes.verify_user_action(&chat, &token, &s1, &b),
         "another approval"
     );
     assert!(
-        !scopes.verify_user_action(&chat, &token, &a),
+        !scopes.verify_user_action(&chat, &token, &s1, &a),
         "spent by the wrong try"
     );
 
-    let token = scopes.mint(&chat, &a).unwrap();
+    let token = scopes.mint(&chat, &s1, &a).unwrap();
     assert!(
-        !scopes.verify_user_action(&notes, &token, &a),
+        !scopes.verify_user_action(&notes, &token, &s1, &a),
         "another caller"
     );
-    let shell = scopes.mint(&Caller::shell(), &a).unwrap();
-    assert!(scopes.verify_user_action(&Caller::shell(), &shell, &a));
+    let shell = scopes.mint(&Caller::shell(), &s1, &a).unwrap();
+    assert!(scopes.verify_user_action(&Caller::shell(), &shell, &s1, &a));
     let forged = UserActionToken("0".repeat(64));
-    assert!(!scopes.verify_user_action(&chat, &forged, &a));
+    assert!(!scopes.verify_user_action(&chat, &forged, &s1, &a));
 }
 
 #[test]
@@ -92,12 +100,26 @@ fn a_user_action_expires() {
     let (_, clock, scopes) = setup();
     let chat = Caller::app("com.isonomic.chat", AppKind::FirstParty);
     let a = approval("apr_1");
-    let token = scopes.mint(&chat, &a).unwrap();
+    let s1 = session("ses_1");
+    let token = scopes.mint(&chat, &s1, &a).unwrap();
     clock.0.store(USER_ACTION_TTL_SECS, Ordering::SeqCst);
-    assert!(!scopes.verify_user_action(&chat, &token, &a));
-    let fresh = scopes.mint(&chat, &a).unwrap();
+    assert!(!scopes.verify_user_action(&chat, &token, &s1, &a));
+    let fresh = scopes.mint(&chat, &s1, &a).unwrap();
     clock
         .0
         .fetch_add(USER_ACTION_TTL_SECS - 1, Ordering::SeqCst);
-    assert!(scopes.verify_user_action(&chat, &fresh, &a));
+    assert!(scopes.verify_user_action(&chat, &fresh, &s1, &a));
+}
+
+#[test]
+fn a_user_action_is_bound_to_its_session() {
+    let (_, _, scopes) = setup();
+    let chat = Caller::app("com.isonomic.chat", AppKind::FirstParty);
+    let a = approval("apv_0001");
+    // The same approval id in two sessions: a token for one is no good
+    // for the other.
+    let token = scopes.mint(&chat, &session("ses_1"), &a).unwrap();
+    assert!(!scopes.verify_user_action(&chat, &token, &session("ses_2"), &a));
+    let token = scopes.mint(&chat, &session("ses_1"), &a).unwrap();
+    assert!(scopes.verify_user_action(&chat, &token, &session("ses_1"), &a));
 }

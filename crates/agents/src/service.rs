@@ -2,30 +2,26 @@
 //! to one onto a host call. The broker has checked the token and the
 //! capability; the host decides what each caller reaches.
 //!
-//! Two things the host does not do yet, done here:
-//! - Approval, question and call ids are minted per session, so the wire
-//!   names the session as well. The host takes only the id (isonomic-harness
-//!   issue #30), so the adapter checks the (session, id) pair first.
-//! - Live deltas are queued for a subscriber without waking it, so a
-//!   stream drains them every `DELTA_TICK` as well as before each event.
+//! Approval, question and call ids are minted per session, so the wire and
+//! the host both name the target by (session, id). The host answers a late
+//! client tool result with `Ok` and an audit record, so a call id that was
+//! never issued in the session is checked here, to stay `not_found` on the
+//! wire. A stream awaits durable events and live deltas alike
+//! (`Subscription::next_update`).
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use broker::agents::{AgentsAnswer, BoxFuture, Starter};
 use harness_core::{CallId, Event as LogEvent, SessionId};
 use harness_host::{
     AnswerInput, AppKind, Caller, ClientOutcome, CreateOptions, Host, HostError, Input,
-    Subscription, UserActionToken,
+    Subscription, Update, UserActionToken,
 };
 use harness_log::SessionStore;
 use isonomic_proto::{Call, ErrorCode, Event, Manifest, Reply, ServerMessage, WireError};
 use tokio::sync::mpsc;
 
 use crate::convert;
-
-/// How long a streaming reply's text may wait before it is sent.
-pub const DELTA_TICK: Duration = Duration::from_millis(40);
 
 pub struct EngineAgents {
     host: Host,
@@ -37,10 +33,6 @@ fn caller(manifest: Option<&Manifest>) -> Caller {
         None => Caller::shell(),
         Some(m) => Caller::app(&m.id, AppKind::FirstParty),
     }
-}
-
-fn not_found() -> WireError {
-    convert::error(HostError::NotFound)
 }
 
 fn done(result: Result<(), HostError>) -> Result<Reply, WireError> {
@@ -58,23 +50,22 @@ impl EngineAgents {
         &self.host
     }
 
-    /// Whether `call` is a client tool call of `session`, per its log.
-    async fn has_call(&self, session: &SessionId, call: &CallId) -> Result<bool, WireError> {
+    /// Whether `call` is a tool call of `session`, per its log.
+    async fn has_call(&self, session: &SessionId, call: &CallId) -> bool {
         let mut after = 0;
         loop {
-            let page = match self.store.read(session, after, 512).await {
-                Ok(page) => page,
-                Err(_) => return Ok(false),
+            let Ok(page) = self.store.read(session, after, 512).await else {
+                return false;
             };
             let Some(last) = page.last() else {
-                return Ok(false);
+                return false;
             };
             after = last.seq;
             let found = page
                 .iter()
                 .any(|e| matches!(&e.event, LogEvent::ToolCall(c) if &c.call == call));
             if found {
-                return Ok(true);
+                return true;
             }
         }
     }
@@ -134,13 +125,17 @@ impl EngineAgents {
             Call::SessionsContinue(r) => done(host.continue_reply(who, &r.session).await)?,
             Call::SessionsCancel(r) => done(host.cancel(who, &r.session).await)?,
             Call::SessionsPurge(p) => {
-                // `proto::auth` lets only the shell name an app, and refuses
-                // the shell's unnamed purge.
-                let target = match p.app {
-                    Some(app) => Caller::app(app.as_str(), AppKind::FirstParty),
-                    None => who.clone(),
+                // `proto::auth` lets only the shell name another app, and
+                // refuses the shell's unnamed purge.
+                let app = match (p.app, who.scope.app()) {
+                    (Some(app), _) => app,
+                    (None, Some(own)) => own.clone(),
+                    (None, None) => {
+                        let message = "the shell must name the app to purge";
+                        return Err(WireError::new(ErrorCode::BadRequest, message));
+                    }
                 };
-                Reply::Purged(convert::purge(host.purge(&target).await.map_err(err)?))
+                Reply::Purged(convert::purge(host.purge(who, &app).await.map_err(err)?))
             }
             Call::SessionsSubscribe(s) => {
                 let sub = host.subscribe(who, &s.session, s.from_seq).await;
@@ -154,31 +149,21 @@ impl EngineAgents {
                 Reply::Approvals(wanted.map(convert::approval).collect())
             }
             Call::ApprovalsDecide(d) => {
-                let pending = host.list_approvals(who).await.map_err(err)?;
-                let ours = pending
-                    .iter()
-                    .any(|p| p.session == d.session && p.request.approval == d.approval);
-                if !ours {
-                    return Err(not_found());
-                }
                 let token = d.user_action.map(UserActionToken);
                 let decision = convert::decision(d.decision);
-                done(
-                    host.decide_approval(who, &d.approval, decision, token)
-                        .await,
-                )?
+                let decided = host.decide_approval(who, &d.session, &d.approval, decision, token);
+                done(decided.await)?
             }
             Call::QuestionsAnswer(q) => {
-                let snapshot = host.open_session(who, &q.session).await.map_err(err)?;
-                if !snapshot.questions.contains(&q.question) {
-                    return Err(not_found());
-                }
                 let answer = AnswerInput {
                     selected: q.selected,
                     text: q.text,
                     skipped: q.skipped,
                 };
-                done(host.answer_question(who, &q.question, answer).await)?
+                done(
+                    host.answer_question(who, &q.session, &q.question, answer)
+                        .await,
+                )?
             }
             Call::ToolsRegisterClient(t) => {
                 done(host.register_client_tools(who, &t.session, t.specs).await)?
@@ -186,14 +171,17 @@ impl EngineAgents {
             Call::ToolsResult(r) => {
                 // The caller must reach the session, and the call must be its.
                 host.open_session(who, &r.session).await.map_err(err)?;
-                if !self.has_call(&r.session, &r.call).await? {
-                    return Err(not_found());
+                if !self.has_call(&r.session, &r.call).await {
+                    return Err(convert::error(HostError::NotFound));
                 }
                 let outcome = match r.error {
                     Some(error) => ClientOutcome::Error(error, r.content),
                     None => ClientOutcome::Ok(r.content),
                 };
-                done(host.client_tool_result(who, &r.call, outcome).await)?
+                done(
+                    host.client_tool_result(who, &r.session, &r.call, outcome)
+                        .await,
+                )?
             }
             Call::PresetsList(_) => {
                 let presets = host.list_presets(who).await.map_err(err)?;
@@ -240,32 +228,18 @@ fn stream(mut sub: Subscription) -> Starter {
     Box::new(
         move |subscription: u64, outbox: mpsc::Sender<ServerMessage>| {
             tokio::spawn(async move {
-                let send = |event: Event| ServerMessage::Event {
-                    subscription,
-                    event,
-                };
-                let mut tick = tokio::time::interval(DELTA_TICK);
-                tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-                loop {
-                    let next = tokio::select! {
-                        next = sub.next() => Some(next),
-                        _ = tick.tick() => None,
+                // `None` once the session is purged and every event is out.
+                while let Some(update) = sub.next_update().await {
+                    let event = match update {
+                        Update::Event(event) => Event::SessionEvent(Box::new(event)),
+                        Update::Delta(delta) => Event::LiveDelta(delta),
                     };
-                    // Deltas first: they are older than the event that woke us.
-                    for delta in sub.deltas() {
-                        if outbox.send(send(Event::LiveDelta(delta))).await.is_err() {
-                            return;
-                        }
-                    }
-                    match next {
-                        None => continue,
-                        Some(None) => return, // purged
-                        Some(Some(event)) => {
-                            let event = Event::SessionEvent(Box::new(event));
-                            if outbox.send(send(event)).await.is_err() {
-                                return;
-                            }
-                        }
+                    let message = ServerMessage::Event {
+                        subscription,
+                        event,
+                    };
+                    if outbox.send(message).await.is_err() {
+                        return;
                     }
                 }
             })

@@ -8,7 +8,7 @@
 //!
 //! A user-action token is minted when the shell reports that a person acted
 //! on one approval. It is random, works once, only for that caller and that
-//! approval, and expires after `USER_ACTION_TTL_SECS` on the engine's clock.
+//! approval in that session, and expires after `USER_ACTION_TTL_SECS` on the engine's clock.
 //! Tokens live in memory only: an engine restart forgets them, and the
 //! person acts again.
 
@@ -18,7 +18,7 @@ use std::sync::{Arc, Mutex};
 
 use broker::Apps;
 use capsule_core::Clock;
-use harness_core::ApprovalId;
+use harness_core::{ApprovalId, SessionId};
 use harness_host::{
     AppKind, Caller, CapabilityToken, HostError, Scope, ScopeResolver, UserActionToken,
 };
@@ -29,6 +29,7 @@ pub const USER_ACTION_TTL_SECS: i64 = 120;
 
 struct Minted {
     scope: Scope,
+    session: SessionId,
     approval: ApprovalId,
     expires_unix: i64,
 }
@@ -58,8 +59,14 @@ impl EngineScopes {
         self.actions.lock().unwrap_or_else(|p| p.into_inner())
     }
 
-    /// A person acted on `approval` for `caller`: the token that proves it.
-    pub fn mint(&self, caller: &Caller, approval: &ApprovalId) -> std::io::Result<UserActionToken> {
+    /// A person acted on `approval` in `session` for `caller`: the token
+    /// that proves it.
+    pub fn mint(
+        &self,
+        caller: &Caller,
+        session: &SessionId,
+        approval: &ApprovalId,
+    ) -> std::io::Result<UserActionToken> {
         let token = random_hex()?;
         let now = self.clock.now_unix();
         let mut actions = self.lock();
@@ -69,6 +76,7 @@ impl EngineScopes {
             token.clone(),
             Minted {
                 scope: caller.scope.clone(),
+                session: session.clone(),
                 approval: approval.clone(),
                 expires_unix: now + USER_ACTION_TTL_SECS,
             },
@@ -90,6 +98,7 @@ impl ScopeResolver for EngineScopes {
         &self,
         caller: &Caller,
         token: &UserActionToken,
+        session: &SessionId,
         approval: &ApprovalId,
     ) -> bool {
         // Spent on the first try, right or wrong, so a token is never
@@ -98,6 +107,7 @@ impl ScopeResolver for EngineScopes {
             return false;
         };
         minted.scope == caller.scope
+            && &minted.session == session
             && &minted.approval == approval
             && self.clock.now_unix() < minted.expires_unix
     }

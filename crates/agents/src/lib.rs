@@ -15,6 +15,6 @@ mod store;
 
 pub use model::GatewayModel;
 pub use scopes::{EngineScopes, USER_ACTION_TTL_SECS};
-pub use service::{EngineAgents, DELTA_TICK};
+pub use service::EngineAgents;
 pub use start::{start, Parts};
 pub use store::SqliteSessionStore;
