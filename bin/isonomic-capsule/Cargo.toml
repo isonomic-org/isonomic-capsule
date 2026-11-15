@@ -12,3 +12,6 @@ packaging.workspace = true
 registry.workspace = true
 supervisor.workspace = true
 tokio.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

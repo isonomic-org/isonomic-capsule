@@ -50,7 +50,16 @@ async fn run() -> Result<(), AnyError> {
     // Tier 0: the registry and the broker socket. Binding first refuses a
     // second engine early and lets the window watch the services start.
     let registry = Arc::new(ServiceRegistry::open(&paths.registry_db())?);
-    let listener = broker::bind(&paths.engine_socket())?;
+    let listener = match broker::bind(&paths.engine_socket()) {
+        Ok(listener) => listener,
+        // Not a failure: the engine the user wanted is up. Exiting cleanly
+        // keeps the login agent from restarting a duplicate in a loop.
+        Err(error @ broker::BindError::AlreadyRunning(_)) => {
+            log(format!("{error}; exiting"));
+            return Ok(());
+        }
+        Err(error) => return Err(error.into()),
+    };
     log(format!("listening on {}", paths.engine_socket().display()));
 
     let triple = packaging::host_triple().ok_or("this platform has no bundled services")?;
