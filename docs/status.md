@@ -11,6 +11,12 @@ Newest first. This file is the engine's status from now on. The history of each 
 
 New entries go at the top of this file, naming the area. The spec stays in `isonomic-desktop/docs/architecture/`.
 
+## 2026-11-15 · Broker: the SDK pin moves to the agents interface
+
+- `SDK_REF` is `1b9fe35` (isonomic-sdk #16, the agents interface). The SDK pins harness-core at the same URL and rev as this repo (`7a73ca6`), so cargo builds one copy.
+- `welcome` carries `schema`: the session event schema the agents host writes (`SchemaVersion::CURRENT`).
+- The 22 `agents` methods are refused to apps without the `agents` capability by `proto::auth`, and answered `unknown_method` otherwise until the adapter serves them. Conformance still passes every check at this pin.
+
 ## 2026-11-15 · Engine: stays headless as apps get their UI through the SDK
 
 - Decision (Omar, through the orchestrator): apps reach Isonomic UI, and later the shared toolkits (an editor and a node-graph toolkit), through the SDK, compiled into the window once. The engine is unaffected: it serves the wire interfaces and knows nothing about windows (rule 9). Its `UI_REF` exists only so cargo can read the SDK workspace's manifests; nothing here builds the UI.

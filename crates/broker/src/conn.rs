@@ -114,6 +114,8 @@ pub(crate) async fn handle(stream: UnixStream, system: Arc<dyn System>, services
                 let welcome = ServerMessage::Welcome {
                     version,
                     engine: env!("CARGO_PKG_VERSION").to_string(),
+                    // The session event schema the agents host writes.
+                    schema: Some(isonomic_proto::agents::SchemaVersion::CURRENT),
                 };
                 let _ = outbox.send(welcome).await;
                 continue;
