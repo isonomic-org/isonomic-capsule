@@ -41,7 +41,8 @@
           "archive": "tar.gz",
           "pathInArchive": "weed"
         }
-      }
+      },
+      "deferred": true
     },
     {
       "name": "llama-server",
