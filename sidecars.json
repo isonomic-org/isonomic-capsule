@@ -44,23 +44,22 @@
     },
     {
       "name": "llama-server",
-      "version": "b10331",
+      "version": "b12387",
       "license": "MIT",
-      "deferred": true,
       "install": "directory",
       "binaryInDir": "llama-server",
       "targets": {
         "aarch64-apple-darwin": {
-          "url": "https://github.com/ggml-org/llama.cpp/releases/download/b10331/llama-b10331-bin-macos-arm64.tar.gz",
-          "sha256": "b1e0fd9895e4601e697563c5e0ac391a81910fcc7042597bb11b13a622a746af",
+          "url": "https://github.com/ggml-org/llama.cpp/releases/download/b12387/llama-b12387-bin-macos-arm64.tar.gz",
+          "sha256": "a654e6020f85d71274f1cf29460caec6537db31decc95a1a9e2f91ce05e648d7",
           "archive": "tar.gz",
-          "pathInArchive": "llama-b10331"
+          "pathInArchive": "llama-b12387"
         },
         "x86_64-apple-darwin": {
-          "url": "https://github.com/ggml-org/llama.cpp/releases/download/b10331/llama-b10331-bin-macos-x64.tar.gz",
-          "sha256": "4974283f41924d66b98b9f3a877b1b283aef007d185cccf524a4a1f22cacba3e",
+          "url": "https://github.com/ggml-org/llama.cpp/releases/download/b12387/llama-b12387-bin-macos-x64.tar.gz",
+          "sha256": "624b91b4af91212631a0a2518ba8405b9cd9f14cad50498d27c3d421453d1b3c",
           "archive": "tar.gz",
-          "pathInArchive": "llama-b10331"
+          "pathInArchive": "llama-b12387"
         }
       }
     },
