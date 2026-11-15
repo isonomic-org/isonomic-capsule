@@ -350,12 +350,35 @@ async fn a_child_sees_only_allow_listed_variables() {
     sup.stop().await;
 }
 
-/// A real program under the service's name (a copy of `sleep`): a script
-/// would show up as the shell, not as the service.
-fn sleeper(dir: &std::path::Path, name: &str) -> PathBuf {
+/// Set only for the stand-in below, so `--ignored` runs don't sit in it.
+const STAND_IN: &str = "ISONOMIC_TEST_STAND_IN";
+/// Arguments that make a copy of this test program run only the stand-in.
+const STAND_IN_ARGS: [&str; 3] = ["--ignored", "--exact", "service::tests::stand_in_service"];
+
+/// A long-running program for the orphan tests, reached by copying this test
+/// binary under the service's name. A script would show up as its shell, and
+/// a copy of a system tool may be one multi-call program that only works
+/// under its own name.
+#[test]
+#[ignore]
+fn stand_in_service() {
+    if std::env::var_os(STAND_IN).is_some() {
+        std::thread::sleep(Duration::from_secs(30));
+    }
+}
+
+fn stand_in(dir: &std::path::Path, name: &str) -> PathBuf {
     let path = dir.join(name);
-    std::fs::copy("/bin/sleep", &path).unwrap();
+    std::fs::copy(std::env::current_exe().unwrap(), &path).unwrap();
     path
+}
+
+fn stand_in_config(program: PathBuf, port: u16, pid_file: PathBuf) -> ServiceConfig {
+    let (mut config, _) = test_config(program, port, false);
+    config.args = STAND_IN_ARGS.iter().map(|a| a.to_string()).collect();
+    config.env = ChildEnv::minimal().with(STAND_IN, "1");
+    config.pid_file = Some(pid_file);
+    config
 }
 
 /// Start `program` the way an earlier engine did (its own process group)
@@ -363,7 +386,10 @@ fn sleeper(dir: &std::path::Path, name: &str) -> PathBuf {
 fn earlier_engines(program: &std::path::Path) -> u32 {
     use std::os::unix::process::CommandExt;
     let mut child = std::process::Command::new(program)
-        .arg("30")
+        .args(STAND_IN_ARGS)
+        .env(STAND_IN, "1")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
         .process_group(0)
         .spawn()
         .unwrap();
@@ -378,15 +404,17 @@ fn earlier_engines(program: &std::path::Path) -> u32 {
 async fn a_service_left_running_by_an_earlier_engine_is_stopped_first() {
     let dir = tempfile::tempdir().unwrap();
     let (addr, _server) = spawn_pong_server().await;
-    let program = sleeper(dir.path(), "cache-server");
+    let program = stand_in(dir.path(), "cache-server");
     let old = earlier_engines(&program);
     let pid_file = dir.path().join("run").join("cache.pid");
     std::fs::create_dir_all(pid_file.parent().unwrap()).unwrap();
     std::fs::write(&pid_file, format!("{old}\n")).unwrap();
+    assert!(
+        !wait_until_gone(old, Duration::from_millis(200)).await,
+        "it runs"
+    );
 
-    let (mut config, _) = test_config(program, addr.port(), false);
-    config.args = vec!["30".to_string()];
-    config.pid_file = Some(pid_file.clone());
+    let config = stand_in_config(program, addr.port(), pid_file.clone());
     let sup = ServiceSupervisor::new(config, None);
     sup.start().await.unwrap();
 
@@ -408,13 +436,15 @@ async fn a_service_left_running_by_an_earlier_engine_is_stopped_first() {
 async fn a_reused_pid_running_something_else_is_left_alone() {
     let dir = tempfile::tempdir().unwrap();
     let (addr, _server) = spawn_pong_server().await;
-    let stranger = earlier_engines(&sleeper(dir.path(), "someone-else"));
+    let stranger = earlier_engines(&stand_in(dir.path(), "someone-else"));
     let pid_file = dir.path().join("cache.pid");
     std::fs::write(&pid_file, format!("{stranger}\n")).unwrap();
+    assert!(
+        !wait_until_gone(stranger, Duration::from_millis(200)).await,
+        "it runs"
+    );
 
-    let (mut config, _) = test_config(sleeper(dir.path(), "cache-server"), addr.port(), false);
-    config.args = vec!["30".to_string()];
-    config.pid_file = Some(pid_file);
+    let config = stand_in_config(stand_in(dir.path(), "cache-server"), addr.port(), pid_file);
     let sup = ServiceSupervisor::new(config, None);
     sup.start().await.unwrap();
 
