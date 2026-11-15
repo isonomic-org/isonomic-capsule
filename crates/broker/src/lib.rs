@@ -3,7 +3,7 @@
 //! It serves the `system` interface (status of every service, a
 //! subscription to status changes, recent logs, the hardware profile and an
 //! ordered shutdown), the `apps` interface, which grants capability
-//! tokens, and the app interfaces: `blobs` and `events` so far. Every request is checked against its caller's token first.
+//! tokens, and the app interfaces: `blobs`, `events` and `sql`. Every request is checked against its caller's token first.
 
 pub mod apps;
 pub mod blobs;
@@ -11,6 +11,7 @@ mod conn;
 pub mod events;
 pub mod host;
 mod random;
+pub mod sql;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -23,6 +24,7 @@ pub use apps::{Apps, TokenKey};
 pub use blobs::Blobs;
 pub use events::Events;
 pub use host::StackSystem;
+pub use sql::Sql;
 
 /// Protocol versions this engine speaks.
 pub const ENGINE_VERSIONS: &[u32] = &[isonomic_proto::PROTOCOL_VERSION];
@@ -103,6 +105,7 @@ pub struct Services {
     pub apps: Apps,
     pub blobs: Blobs,
     pub events: Events,
+    pub sql: Sql,
 }
 
 /// Accept connections until the task is dropped.

@@ -11,6 +11,16 @@ Newest first. This file is the engine's status from now on. The history of each 
 
 New entries go at the top of this file, naming the area. The spec stays in `isonomic-desktop/docs/architecture/`.
 
+## 2026-11-15 · Broker and `appdb`: app databases (SDK request R5)
+
+- The five `sql` methods. New crate `appdb`: the apps' database on the Capsule's own server, over its Unix socket, in one database (`apps`) created on first use.
+- **The roles are the guard.** Each app gets a login role (`app_` and a digest of its id; no superuser, no role or database creation) that owns the schemas its manifest declares and has usage and select on the schemas it lists (current tables, and those their owner creates later). Its statements run on a connection logged in as that role, so no statement can step outside it (`set role` is refused). Nobody but owners reaches `public`. The shell runs as the engine's role in the schema it names. `proto::auth::authorize_schema` picks the schema first.
+- Setup is lazy: an app's role and schemas are made before its first statement, and again after each `apps.grant`. A listed schema that does not exist yet is granted once it does. A schema another app owns is refused.
+- Each call is one transaction with the search path set for it alone. Placeholders use the extended protocol, so one call is one statement. A batch is one transaction. Values: null, boolean, integers, floats, text, bytes; uuid, json, jsonb, date and timestamps arrive as text; other types (numeric, intervals, arrays) answer `sql_error` asking for a cast. Columns report the database's own type names (`int8`, `text`, `timestamptz`).
+- Live queries listen before their first run and run again after every committed write through the interface; the subscriber gets the whole new result only when it changed. A result larger than one frame answers `sql_error`.
+- **Verified on a real server:** `appdb`'s `real_database` test and the conformance suite's opt-in run both start PostgreSQL 16 through the engine's own setup and supervisor (Linux, as a non-root user). The conformance suite passes **22 of 22** there. The hermetic CI run uses a stand-in database below the schema rules and also passes 22 of 22.
+- Deviations: a read-only schema removed from a manifest keeps its grant until revoking is built. Writes made outside this interface (the shell's migrations through `sql.execute` count; a direct connection does not) do not wake live queries.
+
 ## 2026-11-15 · Broker: app events (SDK request R4)
 
 - `events.publish`, `events.subscribe` and `events.unsubscribe`. One broadcast channel per scope (an app's id, or the shell's), shared by every connection, so an app's tabs and windows hear each other. The shell may name an app's scope; `proto::auth` keeps apps in their own.
