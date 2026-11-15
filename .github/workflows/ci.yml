@@ -19,3 +19,6 @@ jobs:
     with:
       toolchain: "1.97"
       sdk: true
+      # The SDK workspace names isonomic-ui; cargo needs it to read the
+      # manifests. Nothing here builds it.
+      ui: true
