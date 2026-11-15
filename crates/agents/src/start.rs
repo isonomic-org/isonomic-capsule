@@ -18,6 +18,11 @@ pub struct Parts {
     pub model: Arc<dyn ModelClient>,
     pub locale: EngineLocale,
     pub profile: capsule_core::Profile,
+    /// Offer the harness's engine tools (ask the person, a to-do list, a
+    /// plan, the time) to sessions whose preset allows them. Off for V1:
+    /// local models take no tools, and with none offered the chat preset
+    /// leaves its tools and approvals paragraph out of the prompt.
+    pub engine_tools: bool,
 }
 
 fn profile(p: capsule_core::Profile) -> Profile {
@@ -46,7 +51,10 @@ pub async fn start(parts: Parts) -> Result<EngineAgents, harness_host::HostError
         locale: Arc::new(parts.locale.clone()),
     };
     let mut config = memory_config();
-    config.tools = toolkit(Arc::new(parts.locale));
+    config.tools = match parts.engine_tools {
+        true => toolkit(Arc::new(parts.locale)),
+        false => Vec::new(),
+    };
     config.profile = Some(profile(parts.profile));
     let host = Host::new(deps, config);
     host.recover().await?;

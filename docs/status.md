@@ -12,6 +12,12 @@ Newest first. This file is the engine's status from now on. The history of each 
 
 New entries go at the top of this file, naming the area; older ones move to their area's file when this one nears 20 KB. The spec stays in `isonomic-desktop/docs/architecture/`.
 
+## 2026-11-15 · Gateway and agents: groundwork for the model picker; no engine tools for plain chat
+
+- `Gateway::recommended_id()`: the model `models.recommended` names for this machine's own profile (none below the memory floor), for the picker's `recommended` mark once the wire carries it.
+- `Gateway::check_session_model()`: the rule `models.stream` applies, for `sessions.create` naming a model once the wire and the host carry it: the app's `models` capability must allow it (`capability_denied`), it must exist (`unknown_model`), be installed (`model_unavailable`) and chat (`unsupported`).
+- `agents::Parts::engine_tools` (off in the engine): the harness's engine tools are no longer offered to sessions. Local models take no tools, and with none offered the chat preset's next version leaves its tools and approvals paragraph out of the prompt.
+
 ## 2026-11-15 · `appdb`: an app's schemas are made when it is granted
 
 - `apps.grant` now sets the app's role, schemas and read access up right away, in the background after the reply, so the reply never waits on the database and a grant still succeeds while it starts. The setup before an app's first statement stays as the backstop.

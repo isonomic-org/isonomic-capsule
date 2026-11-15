@@ -66,6 +66,7 @@ async fn a_chat_turn_streams_from_the_gateway_into_the_log() {
             language: "en".into(),
         },
         profile: Profile::Standard,
+        engine_tools: false,
     })
     .await
     .unwrap();
@@ -172,6 +173,7 @@ async fn a_stopped_reply_continues_from_its_partial_text() {
             language: "en".into(),
         },
         profile: Profile::Standard,
+        engine_tools: false,
     })
     .await
     .unwrap();

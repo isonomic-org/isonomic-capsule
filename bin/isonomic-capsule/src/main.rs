@@ -158,6 +158,7 @@ async fn run() -> Result<(), AnyError> {
         model: Arc::new(agents::GatewayModel::new(Arc::clone(&gateway))),
         locale,
         profile,
+        engine_tools: false,
     })
     .await
     .map_err(|e| format!("the agents host did not start: {e:?}"))?;
