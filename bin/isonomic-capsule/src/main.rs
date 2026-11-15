@@ -119,6 +119,7 @@ async fn run() -> Result<(), AnyError> {
         ),
         blobs: broker::Blobs::open(&paths.blobs_dir(), &paths.registry_db())
             .map_err(|e| e.message)?,
+        events: broker::Events::default(),
     };
     let server = tokio::spawn(broker::serve(listener, system.clone(), Arc::new(services)));
 

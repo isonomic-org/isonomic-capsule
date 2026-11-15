@@ -11,6 +11,14 @@ Newest first. This file is the engine's status from now on. The history of each 
 
 New entries go at the top of this file, naming the area. The spec stays in `isonomic-desktop/docs/architecture/`.
 
+## 2026-11-15 · Broker: app events (SDK request R4)
+
+- `events.publish`, `events.subscribe` and `events.unsubscribe`. One broadcast channel per scope (an app's id, or the shell's), shared by every connection, so an app's tabs and windows hear each other. The shell may name an app's scope; `proto::auth` keeps apps in their own.
+- Live, at most once: nothing is stored; a subscriber more than 256 events behind misses events instead of slowing the publisher. `data` is passed through untouched and never logged. Bad topics answer `bad_request`.
+- The `listening` reply goes out before the first event: the subscriber listens before the reply and forwards only after it.
+- Every subscription (system ones too) remembers the token that opened it; only that caller may end it (`unknown_subscription` otherwise). A closed connection ends its subscriptions.
+- Conformance: 21 of 22. Only `sql.schemas` (R5) remains.
+
 ## 2026-11-15 · Broker: blob storage (SDK request R3)
 
 - The six `blobs` methods. Each blob is a file in `<capsule>/blobs` (user-only), named by a random handle, with a row in the registry database: owner, content type, size, bytes written.

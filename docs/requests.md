@@ -27,7 +27,7 @@ What the window's apps need from the engine, filed by the SDK session. Newest fi
 
 ## R4 · App events (`events` interface)
 
-**Status:** open. **`SDK_REF`:** `f8b3f0dc066af8a9c27ecb61f89ce9d3bbe178b0` (isonomic-sdk #9). **Spec:** isonomic-sdk `docs/interfaces/events.md`; every shape is a fixture in `crates/proto/fixtures/v0/events.jsonl`.
+**Status:** done (engine PR #31; see `docs/status.md`). **`SDK_REF`:** `f8b3f0dc066af8a9c27ecb61f89ce9d3bbe178b0` (isonomic-sdk #9). **Spec:** isonomic-sdk `docs/interfaces/events.md`; every shape is a fixture in `crates/proto/fixtures/v0/events.jsonl`.
 
 1. **Three methods:** `events.publish`, `events.subscribe`, `events.unsubscribe`. No capability: `proto::auth::authorize` already keeps an app in its own scope and lets only the shell name another app's (`app`).
 2. **One scope per app**, shared by every connection, so an app's tabs and windows hear each other. A subscriber gets `app_event { topic, data, sender }` for each publish in its scope whose topic it listens to (`proto::events::matches`; no topics means all). Refuse a topic that fails `proto::events::valid_topic` with `bad_request`.
