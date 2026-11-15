@@ -105,8 +105,8 @@ async fn run() -> Result<(), AnyError> {
 
     // The RAM gate sees the chosen profile, override included, and reads free
     // memory at each gated start.
-    let gate = ProfileRamGate::new(profile, Arc::clone(&hardware));
-    let mut stack = Stack::new(Some(Arc::clone(&registry))).with_gate(Arc::new(gate));
+    let gate = Arc::new(ProfileRamGate::new(profile, Arc::clone(&hardware)));
+    let mut stack = Stack::new(Some(Arc::clone(&registry))).with_gate(gate.clone());
     stack.add(postgres::NAME, Tier::T1, service);
     stack.add(cache::NAME, Tier::T1, cache_service);
     let stack = Arc::new(stack);
@@ -116,8 +116,27 @@ async fn run() -> Result<(), AnyError> {
         registry::GrantStore::open(&paths.registry_db())?,
         broker::TokenKey::load_or_create(&paths.token_key())?,
     ));
-    // The agents host. Until the model gateway lands, every turn fails with
-    // a readable "no model" error in the session's log.
+    // The model gateway: local models in the Capsule, run by the bundled
+    // llama.cpp server under the same memory gate. Without the server it
+    // still lists installed models and answers streams `model_unavailable`.
+    let llama = bundle.binary("llama-server", "llama-server");
+    let llama_status = Bundle::status(&llama);
+    log(format!(
+        "binary llama-server: {} ({})",
+        llama.display(),
+        llama_status.as_str()
+    ));
+    let server = (llama_status == packaging::BinaryStatus::Executable).then_some(llama);
+    // Intel Macs run models on the CPU: talk to the smallest by default.
+    let slow = cfg!(all(target_os = "macos", target_arch = "x86_64")) || profile == Profile::Low;
+    let gateway = Arc::new(gateway::Gateway::new(
+        isonomic_model_library::Manifest::builtin(),
+        paths.models_dir(),
+        server,
+        gate.clone(),
+        slow,
+    ));
+    // The agents host, on the gateway's models.
     let locale = agents::deps::EngineLocale::from_system();
     log(format!(
         "locale: {} ({} min), {}",
@@ -129,7 +148,7 @@ async fn run() -> Result<(), AnyError> {
             Arc::clone(&apps),
             Arc::new(capsule_core::SystemClock),
         )),
-        model: Arc::new(agents::deps::NoModel),
+        model: Arc::new(agents::GatewayModel::new(Arc::clone(&gateway))),
         locale,
         profile,
     })
@@ -147,6 +166,7 @@ async fn run() -> Result<(), AnyError> {
             postgres::DATABASE,
         ))),
         agents: Arc::new(host),
+        models: gateway,
     };
     let server = tokio::spawn(broker::serve(listener, system.clone(), Arc::new(services)));
 

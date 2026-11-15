@@ -15,10 +15,11 @@ use isonomic_proto::{
 use tokio::net::unix::OwnedWriteHalf;
 use tokio::net::UnixStream;
 use tokio::sync::broadcast::error::RecvError;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 
 use crate::agents::{AgentsAnswer, Starter};
+use crate::models::{ModelsAnswer, StreamStarter};
 use crate::sql::Answer;
 use crate::{Services, System, ENGINE_VERSIONS};
 
@@ -74,6 +75,8 @@ pub(crate) async fn handle(stream: UnixStream, system: Arc<dyn System>, services
     // Each subscription remembers the token that opened it: only that
     // caller may end it, even on the same connection.
     let mut subscriptions: HashMap<u64, (JoinHandle<()>, Option<Token>)> = HashMap::new();
+    // Model streams end themselves on cancel, with a `stop: cancelled` chunk.
+    let mut cancels: HashMap<u64, oneshot::Sender<()>> = HashMap::new();
     let mut next_subscription: u64 = 1;
     let mut greeted = false;
 
@@ -158,6 +161,7 @@ pub(crate) async fn handle(stream: UnixStream, system: Arc<dyn System>, services
         let mut then_forward = None;
         // A subscription that starts forwarding once its reply is out.
         let mut then_listen: Option<(u64, Starter)> = None;
+        let mut then_stream: Option<(u64, StreamStarter)> = None;
         let outcome = match call {
             Call::SystemStatus => Outcome::Result(Reply::Status(system.status())),
             Call::SystemSubscribe => {
@@ -215,6 +219,39 @@ pub(crate) async fn handle(stream: UnixStream, system: Arc<dyn System>, services
                 }
                 Err(error) => Outcome::Error(error),
             },
+            Call::ModelsCancel { subscription } => match subscriptions.get(&subscription) {
+                Some((task, owner))
+                    if *owner == token
+                        && !task.is_finished()
+                        && cancels.contains_key(&subscription) =>
+                {
+                    if let Some(cancel) = cancels.remove(&subscription) {
+                        let _ = cancel.send(());
+                    }
+                    // The task sends the last chunk and ends on its own.
+                    subscriptions.remove(&subscription);
+                    Outcome::Result(Reply::Cancelled {})
+                }
+                _ => Outcome::Error(WireError::new(
+                    ErrorCode::UnknownSubscription,
+                    format!("no stream {subscription}"),
+                )),
+            },
+            call if call.interface() == Interface::Models => {
+                match services.models.answer(manifest.as_ref(), call).await {
+                    Ok(ModelsAnswer::Reply(reply)) => Outcome::Result(reply),
+                    Ok(ModelsAnswer::Stream { model, start }) => {
+                        let subscription = next_subscription;
+                        next_subscription += 1;
+                        then_stream = Some((subscription, start));
+                        Outcome::Result(Reply::Stream {
+                            subscription,
+                            model,
+                        })
+                    }
+                    Err(error) => Outcome::Error(error),
+                }
+            }
             call if call.interface() == Interface::Agents => {
                 match services.agents.answer(manifest.as_ref(), call).await {
                     Ok(AgentsAnswer::Reply(reply)) => Outcome::Result(reply),
@@ -290,6 +327,12 @@ pub(crate) async fn handle(stream: UnixStream, system: Arc<dyn System>, services
         // The reply is out, so no event can arrive before it.
         if let Some((subscription, start)) = then_listen {
             let task = start(subscription, outbox.clone());
+            subscriptions.insert(subscription, (task, token.clone()));
+        }
+        if let Some((subscription, start)) = then_stream {
+            let (cancel, cancelled) = oneshot::channel();
+            let task = start(subscription, outbox.clone(), cancelled);
+            cancels.insert(subscription, cancel);
             subscriptions.insert(subscription, (task, token.clone()));
         }
         if then_shut_down {

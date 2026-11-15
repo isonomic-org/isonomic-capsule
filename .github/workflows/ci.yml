@@ -24,3 +24,5 @@ jobs:
       ui: true
       # The agents adapter depends on harness-core and harness-host.
       harness: true
+      # The model gateway runs local models through isonomic-inference.
+      inference: true

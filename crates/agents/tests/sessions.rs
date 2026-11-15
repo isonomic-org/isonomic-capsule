@@ -60,6 +60,7 @@ async fn engine() -> Engine {
         events: Events::default(),
         sql: Sql::new(Arc::new(appdb::StandIn::default())),
         agents: Arc::new(host),
+        models: Arc::new(broker::NoModels),
     };
     let stack = Arc::new(supervisor::Stack::new(None));
     let hardware = Arc::new(FixedHardware::with_total(16 << 30));

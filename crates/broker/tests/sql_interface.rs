@@ -52,6 +52,7 @@ async fn a_live_query_follows_writes_and_only_its_opener_ends_it() {
         events: Events::default(),
         sql: Sql::new(db.clone()),
         agents: Arc::new(broker::NoAgents),
+        models: Arc::new(broker::NoModels),
     };
     let stack = Arc::new(supervisor::Stack::new(None));
     let hardware = Arc::new(FixedHardware::with_total(16 << 30));

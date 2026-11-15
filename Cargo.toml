@@ -8,6 +8,7 @@ members = [
     "crates/packaging",
     "crates/appdb",
     "crates/agents",
+    "crates/gateway",
     "xtask",
     "bin/isonomic-capsule",
 ]
@@ -25,6 +26,7 @@ broker = { path = "crates/broker" }
 packaging = { path = "crates/packaging" }
 appdb = { path = "crates/appdb" }
 agents = { path = "crates/agents" }
+gateway = { path = "crates/gateway" }
 bytes = "1"
 flate2 = "1"
 serde = { version = "1", features = ["derive"] }
@@ -47,6 +49,13 @@ harness-host = { git = "ssh://git@github.com/isonomic-org/isonomic-harness.git",
 harness-preset = { git = "ssh://git@github.com/isonomic-org/isonomic-harness.git", rev = "7a73ca695254d415332ef39bae2b100e4f791b6c" }
 harness-toolkit = { git = "ssh://git@github.com/isonomic-org/isonomic-harness.git", rev = "7a73ca695254d415332ef39bae2b100e4f791b6c" }
 harness-log = { git = "ssh://git@github.com/isonomic-org/isonomic-harness.git", rev = "7a73ca695254d415332ef39bae2b100e4f791b6c" }
+# Local models, from the isonomic-inference sibling checkout at INFERENCE_REF.
+isonomic-inference-core = { path = "../isonomic-inference/crates/inference-core" }
+isonomic-inference-testkit = { path = "../isonomic-inference/crates/testkit" }
+isonomic-llama = { path = "../isonomic-inference/crates/llama" }
+isonomic-model-library = { path = "../isonomic-inference/crates/library" }
+isonomic-provider = { path = "../isonomic-inference/crates/provider" }
+futures-util = "0.3"
 libc = "0.2"
 rusqlite = { version = "0.32", features = ["bundled"] }
 sysinfo = "0.33"

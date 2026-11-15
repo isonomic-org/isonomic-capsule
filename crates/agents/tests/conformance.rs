@@ -48,6 +48,7 @@ async fn conform(paths: &CapsulePaths, stack: Arc<Stack>, db: Arc<dyn Database>)
         events: Events::default(),
         sql: Sql::new(db),
         agents: Arc::new(host),
+        models: Arc::new(broker::NoModels),
     };
     let socket = paths.engine_socket();
     let bound = broker::bind(&socket).unwrap();

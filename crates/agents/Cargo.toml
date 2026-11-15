@@ -7,6 +7,9 @@ publish.workspace = true
 
 [dependencies]
 broker.workspace = true
+futures-util.workspace = true
+gateway.workspace = true
+isonomic-inference-core.workspace = true
 capsule-core.workspace = true
 harness-host.workspace = true
 harness-preset.workspace = true
@@ -21,6 +24,8 @@ serde_json.workspace = true
 tokio.workspace = true
 
 [dev-dependencies]
+isonomic-inference-testkit.workspace = true
+isonomic-model-library.workspace = true
 appdb.workspace = true
 isonomic-client.workspace = true
 isonomic-conformance.workspace = true
