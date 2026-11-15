@@ -14,7 +14,7 @@ New entries go at the top of this file, naming the area; older ones move to thei
 
 ## 2026-11-15 · Gateway: model downloads and the first model (isonomic-sdk #26)
 
-- `SDK_REF` is isonomic-sdk #26's head (`af8e023`) until it merges; the pin moves to its merge commit then.
+- `SDK_REF` is `de3e0da`, isonomic-sdk main with #26 merged.
 - `models.download`, `models.download_cancel` and `models.recommended`, all shell only (`proto::auth`).
 - **The engine owns each download.** It runs in the gateway with the model library's downloader: the file arrives as `<name>.part`, its SHA-256 is checked against the manifest, then it is renamed in, so a model is installed only whole. A second `models.download` attaches to the running one and is first sent where it stands; an installed model gets one final `installed` event. The event with an `outcome` (`installed`, `failed` with the reason, `cancelled`) is the last. Sizes are absent when unknown, never 0.
 - **Cancel takes the model** and ends every follower `cancelled`; with nothing running it answers `not_downloading`. A cancelled download leaves at most a `.part` file, which the next attempt replaces.
