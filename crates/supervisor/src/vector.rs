@@ -58,8 +58,8 @@ pub fn config_template(profile: Profile, key: &str) -> String {
          \x20 api_key: {key}\n\
          \x20 enable_cors: false\n\
          storage:\n\
-         \x20 storage_path: {{data_dir}}/storage\n\
-         \x20 snapshots_path: {{data_dir}}/snapshots\n\
+         \x20 storage_path: \"{{data_dir}}/storage\"\n\
+         \x20 snapshots_path: \"{{data_dir}}/snapshots\"\n\
          \x20 on_disk_payload: {on_disk}\n"
     )
 }
@@ -127,7 +127,7 @@ mod tests {
             "  http_port: {port}",
             "  grpc_port: null",
             "  api_key: k3y",
-            "  storage_path: {data_dir}/storage",
+            "  storage_path: \"{data_dir}/storage\"",
         ] {
             assert!(
                 text.lines().any(|l| l == line),
