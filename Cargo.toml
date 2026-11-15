@@ -6,6 +6,7 @@ members = [
     "crates/supervisor",
     "crates/broker",
     "crates/packaging",
+    "crates/appdb",
     "crates/agents",
     "xtask",
     "bin/isonomic-capsule",
@@ -22,6 +23,8 @@ registry = { path = "crates/registry" }
 supervisor = { path = "crates/supervisor" }
 broker = { path = "crates/broker" }
 packaging = { path = "crates/packaging" }
+appdb = { path = "crates/appdb" }
+bytes = "1"
 flate2 = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
@@ -45,6 +48,8 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 sysinfo = "0.33"
 tempfile = "3"
 thiserror = "2"
+# The apps' database client, over the Capsule's Unix socket; no TLS.
+tokio-postgres = { version = "0.7", default-features = false, features = ["runtime"] }
 tokio = { version = "1", features = ["process", "net", "time", "sync", "io-util", "rt-multi-thread", "macros", "fs", "signal"] }
 
 [profile.release]

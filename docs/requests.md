@@ -4,7 +4,7 @@ What the window's apps need from the engine, filed by the SDK session. Newest fi
 
 ## R6 · Run the conformance checks
 
-**Status:** open. **`SDK_REF`:** `f2545b20ee0faea12f0bece91c243c086ba806c1` (isonomic-sdk #11). **Spec:** isonomic-sdk `docs/conformance.md`.
+**Status:** done: all 22 checks run in CI and pass (engine PRs #27 to #32). **`SDK_REF`:** `f2545b20ee0faea12f0bece91c243c086ba806c1` (isonomic-sdk #11). **Spec:** isonomic-sdk `docs/conformance.md`.
 
 1. **Add `isonomic-conformance`** as a dev-dependency at the same `SDK_REF`, start a test engine in a temporary Capsule directory, and run `isonomic_conformance::run(unix_connector(socket))` against it in CI. Each failure names the rule it broke.
 2. **Grow into it.** Until every interface is in, run a subset with `run_only`: the `wire.` and `tokens.` checks once R1 lands, then each interface's group as it does (`blobs.`, `events.`, `sql.`).
@@ -14,7 +14,7 @@ What the window's apps need from the engine, filed by the SDK session. Newest fi
 
 ## R5 · App databases (`sql` interface)
 
-**Status:** open. **`SDK_REF`:** `02b838a8526423afeb337631f716d105978a1bb5` (isonomic-sdk #10). **Spec:** isonomic-sdk `docs/interfaces/sql.md`; every shape is a fixture in `crates/proto/fixtures/v0/sql.jsonl`.
+**Status:** done (engine PR #32; see `docs/status.md`). **`SDK_REF`:** `02b838a8526423afeb337631f716d105978a1bb5` (isonomic-sdk #10). **Spec:** isonomic-sdk `docs/interfaces/sql.md`; every shape is a fixture in `crates/proto/fixtures/v0/sql.jsonl`.
 
 1. **Five methods:** `sql.query`, `sql.execute`, `sql.batch`, `sql.subscribe`, `sql.unsubscribe`, on the Capsule's database. `proto::auth::authorize` already refuses an app without the `sql` capability.
 2. **Schemas and roles.** On `apps.grant`, create each schema the manifest declares, owned by a role for that app, and give that role read-only access to the schemas listed in `capabilities.sql.schemas`. Run each call as the app's role, in the schema `proto::auth::authorize_schema(manifest, schema, write)` returns (`write` is true for `execute` and `batch`). The roles are the real guard: a write sent through `sql.query` to a listed schema is refused by the database (`sql_error`). The shell runs in the schema it names.

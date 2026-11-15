@@ -6,6 +6,7 @@ edition.workspace = true
 publish.workspace = true
 
 [dependencies]
+appdb.workspace = true
 capsule-core.workspace = true
 isonomic-proto.workspace = true
 libc.workspace = true

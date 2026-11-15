@@ -18,9 +18,13 @@ use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
+use crate::sql::Answer;
 use crate::{Services, System, ENGINE_VERSIONS};
 
 const DEFAULT_LOG_LINES: usize = 50;
+
+/// Starts a subscription's forwarding task, given its id and the outbox.
+type Starter = Box<dyn FnOnce(u64, mpsc::Sender<ServerMessage>) -> JoinHandle<()> + Send>;
 
 fn error(id: u64, code: ErrorCode, message: impl Into<String>) -> ServerMessage {
     ServerMessage::Response {
@@ -152,7 +156,8 @@ pub(crate) async fn handle(stream: UnixStream, system: Arc<dyn System>, services
 
         let mut then_shut_down = false;
         let mut then_forward = None;
-        let mut then_listen = None;
+        // A subscription that starts forwarding once its reply is out.
+        let mut then_listen: Option<(u64, Starter)> = None;
         let outcome = match call {
             Call::SystemStatus => Outcome::Result(Reply::Status(system.status())),
             Call::SystemSubscribe => {
@@ -168,20 +173,20 @@ pub(crate) async fn handle(stream: UnixStream, system: Arc<dyn System>, services
                     snapshot: system.status(),
                 })
             }
-            Call::SystemUnsubscribe { subscription } | Call::EventsUnsubscribe { subscription } => {
-                match subscriptions.get(&subscription) {
-                    Some((_, owner)) if *owner == token => {
-                        if let Some((task, _)) = subscriptions.remove(&subscription) {
-                            task.abort();
-                        }
-                        Outcome::Result(Reply::Unsubscribed {})
+            Call::SystemUnsubscribe { subscription }
+            | Call::EventsUnsubscribe { subscription }
+            | Call::SqlUnsubscribe { subscription } => match subscriptions.get(&subscription) {
+                Some((_, owner)) if *owner == token => {
+                    if let Some((task, _)) = subscriptions.remove(&subscription) {
+                        task.abort();
                     }
-                    _ => Outcome::Error(WireError::new(
-                        ErrorCode::UnknownSubscription,
-                        format!("no subscription {subscription}"),
-                    )),
+                    Outcome::Result(Reply::Unsubscribed {})
                 }
-            }
+                _ => Outcome::Error(WireError::new(
+                    ErrorCode::UnknownSubscription,
+                    format!("no subscription {subscription}"),
+                )),
+            },
             Call::SystemLogs { service, limit } => {
                 let limit = limit.map(|n| n as usize).unwrap_or(DEFAULT_LOG_LINES);
                 match system.logs(&service, limit) {
@@ -198,12 +203,28 @@ pub(crate) async fn handle(stream: UnixStream, system: Arc<dyn System>, services
                 Outcome::Result(Reply::ShuttingDown {})
             }
             Call::AppsGrant { manifest } => match services.apps.grant(&manifest) {
-                Ok(token) => Outcome::Result(Reply::Granted {
-                    app: manifest.id,
-                    token,
-                }),
+                Ok(token) => {
+                    services.sql.granted(&manifest.id);
+                    Outcome::Result(Reply::Granted {
+                        app: manifest.id,
+                        token,
+                    })
+                }
                 Err(error) => Outcome::Error(error),
             },
+            call if call.interface() == Interface::Sql => {
+                match services.sql.answer(manifest.as_ref(), call).await {
+                    Ok(Answer::Reply(reply)) => Outcome::Result(reply),
+                    Ok(Answer::Live(rows, live)) => {
+                        let subscription = next_subscription;
+                        next_subscription += 1;
+                        let start: Starter = Box::new(move |s, out| live.start(s, out));
+                        then_listen = Some((subscription, start));
+                        Outcome::Result(Reply::LiveQuery { subscription, rows })
+                    }
+                    Err(error) => Outcome::Error(error),
+                }
+            }
             Call::EventsPublish {
                 topic,
                 data,
@@ -222,7 +243,8 @@ pub(crate) async fn handle(stream: UnixStream, system: Arc<dyn System>, services
                     Ok(listener) => {
                         let subscription = next_subscription;
                         next_subscription += 1;
-                        then_listen = Some((subscription, listener));
+                        let start: Starter = Box::new(move |s, out| listener.start(s, out));
+                        then_listen = Some((subscription, start));
                         Outcome::Result(Reply::Listening { subscription })
                     }
                     Err(error) => Outcome::Error(error),
@@ -251,8 +273,8 @@ pub(crate) async fn handle(stream: UnixStream, system: Arc<dyn System>, services
             subscriptions.insert(subscription, (task, token.clone()));
         }
         // The reply is out, so no event can arrive before it.
-        if let Some((subscription, listener)) = then_listen {
-            let task = listener.start(subscription, outbox.clone());
+        if let Some((subscription, start)) = then_listen {
+            let task = start(subscription, outbox.clone());
             subscriptions.insert(subscription, (task, token.clone()));
         }
         if then_shut_down {
