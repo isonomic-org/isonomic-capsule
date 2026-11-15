@@ -105,8 +105,9 @@ impl ModelClient for GatewayModel {
             .and_then(|e| e.meta.context_length)
             .unwrap_or(4096);
         ModelCaps {
-            // The local server does not continue an assistant prefix.
-            prefill: false,
+            // The llama.cpp server continues a final assistant message (its
+            // assistant prefill), which is how the harness asks to continue.
+            prefill: true,
             reasoning: true,
             tools: false,
             context_tokens: u64::from(context),
@@ -174,5 +175,31 @@ impl harness_core::future::Stream for Events {
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Option<Self::Item>> {
         self.get_mut().0.poll_recv(cx)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_continue_request_ends_with_the_partial_reply() {
+        let req: ModelRequest = serde_json::from_value(serde_json::json!({
+            "model": "local:default",
+            "params": {"max_output_tokens": 256, "reasoning": "off"},
+            "system": "Be brief.",
+            "messages": [
+                {"role": "user", "content": [{"type": "text", "text": "Count to five"}]},
+                {"role": "assistant", "content": [{"type": "text", "text": "One, two,"}]}
+            ],
+            "prefill": true
+        }))
+        .unwrap();
+        let out = request(Some("chat-small".into()), &req);
+        let roles: Vec<_> = out.messages.iter().map(|m| m.role).collect();
+        assert_eq!(roles, [Role::System, Role::User, Role::Assistant]);
+        assert_eq!(out.messages[2].content, "One, two,");
+        assert_eq!(out.max_tokens, Some(256));
+        assert_eq!(out.reasoning, Some(false));
     }
 }
