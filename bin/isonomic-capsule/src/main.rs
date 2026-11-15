@@ -112,7 +112,11 @@ async fn run() -> Result<(), AnyError> {
     let stack = Arc::new(stack);
 
     let system = StackSystem::new(Arc::clone(&stack), Some(registry), hardware, profile);
-    let server = tokio::spawn(broker::serve(listener, system.clone()));
+    let apps = broker::Apps::new(
+        registry::GrantStore::open(&paths.registry_db())?,
+        broker::TokenKey::load_or_create(&paths.token_key())?,
+    );
+    let server = tokio::spawn(broker::serve(listener, system.clone(), Arc::new(apps)));
 
     // A failed start does not end the engine: it keeps serving status so the
     // window can show what went wrong.
