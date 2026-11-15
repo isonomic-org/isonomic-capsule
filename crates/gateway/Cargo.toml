@@ -14,9 +14,11 @@ isonomic-llama.workspace = true
 isonomic-model-library.workspace = true
 isonomic-proto.workspace = true
 isonomic-provider.workspace = true
+reqwest.workspace = true
 tokio.workspace = true
 
 [dev-dependencies]
+sha2.workspace = true
 isonomic-client.workspace = true
 isonomic-inference-testkit.workspace = true
 registry.workspace = true

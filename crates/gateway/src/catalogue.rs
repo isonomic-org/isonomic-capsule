@@ -24,6 +24,27 @@ impl Catalogue {
         }
     }
 
+    /// The model directory.
+    pub fn dir(&self) -> &Path {
+        &self.dir
+    }
+
+    /// The model to recommend first: the smallest chat model on a slow
+    /// machine or the low profile, else the manifest's default. Installed
+    /// or not.
+    pub fn first_model(&self, small: bool) -> &ModelEntry {
+        let smallest = self
+            .manifest
+            .entries()
+            .iter()
+            .filter(|e| e.meta.supports(Capability::Chat))
+            .min_by_key(|e| e.meta.size_bytes);
+        match smallest {
+            Some(entry) if small || self.slow => entry,
+            _ => self.manifest.default_chat(),
+        }
+    }
+
     /// Where a model's file is, installed or not.
     pub fn path(&self, entry: &ModelEntry) -> PathBuf {
         self.dir.join(&entry.file_name)

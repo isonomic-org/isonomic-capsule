@@ -240,6 +240,20 @@ pub(crate) async fn handle(stream: UnixStream, system: Arc<dyn System>, services
             call if call.interface() == Interface::Models => {
                 match services.models.answer(manifest.as_ref(), call).await {
                     Ok(ModelsAnswer::Reply(reply)) => Outcome::Result(reply),
+                    Ok(ModelsAnswer::Download {
+                        model,
+                        total_bytes,
+                        start,
+                    }) => {
+                        let subscription = next_subscription;
+                        next_subscription += 1;
+                        then_listen = Some((subscription, start));
+                        Outcome::Result(Reply::Downloading {
+                            subscription,
+                            model,
+                            total_bytes,
+                        })
+                    }
                     Ok(ModelsAnswer::Stream { model, start }) => {
                         let subscription = next_subscription;
                         next_subscription += 1;

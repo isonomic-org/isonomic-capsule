@@ -526,6 +526,8 @@ dependencies = [
  "isonomic-proto",
  "isonomic-provider",
  "registry",
+ "reqwest",
+ "sha2 0.10.9",
  "supervisor",
  "tempfile",
  "tokio",
