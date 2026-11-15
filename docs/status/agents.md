@@ -2,6 +2,11 @@
 
 Newest first. The host for agent sessions (`crates/agents`), over the harness host.
 
+## 2026-11-15 · Agents: stop and continue on local models
+
+- `GatewayModel` now says it can continue a reply (`prefill`). A continue request ends with the sealed partial reply as the last assistant message, and the llama.cpp server continues a final assistant message (its assistant prefill, on by default in `b12387`).
+- Verified end to end through the gateway with the fake model server: a reply is stopped after its first text, continued, and the server is asked with the partial text as the final assistant message.
+
 ## 2026-11-15 · Agents: the `agents` interface served by the harness host
 
 - `SDK_REF` is `21ed50d` (isonomic-sdk #16 and #19: the agents interface and the `agents.` conformance checks). The SDK pins harness-core at the same URL and rev as this repo (`7a73ca6`). `welcome` carries `schema`, the session event schema the host writes.
