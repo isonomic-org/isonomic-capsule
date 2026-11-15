@@ -212,6 +212,37 @@ async fn each_apps_role_is_the_real_guard() {
         "a write through query did not tick"
     );
 
+    // Chat's manifest: preparing it at grant time creates its schema,
+    // owned by its role, and Chat's own statements then work there.
+    let chat = app("chat", &["chat"], &[]);
+    db.prepare(&chat).await.unwrap();
+    let owner = db
+        .query(
+            Runner::Shell,
+            "public",
+            "select pg_get_userbyid(nspowner)::text as owner from pg_namespace where nspname = 'chat'",
+            &[],
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        owner.rows,
+        [[SqlValue::Text(appdb::role_name("com.isonomic.chat"))]]
+    );
+    let c = Runner::App(&chat);
+    let create = "create table if not exists pins (session text primary key, pinned_at timestamptz not null default now())";
+    db.execute(c, "chat", create, &[]).await.unwrap();
+    let pin = "insert into pins (session) values ($1)";
+    db.execute(c, "chat", pin, &[SqlValue::Text("ses_1".into())])
+        .await
+        .unwrap();
+    let pins = db
+        .query(c, "chat", "select session, pinned_at from pins", &[])
+        .await
+        .unwrap();
+    assert_eq!(pins.rows[0][0], SqlValue::Text("ses_1".into()));
+    assert!(matches!(&pins.rows[0][1], SqlValue::Text(t) if t.ends_with('Z')));
+
     // The shell runs as the engine's role in the schema it names.
     let all = db
         .query(Runner::Shell, "notes", "select count(*) from items", &[])

@@ -107,3 +107,54 @@ async fn a_live_query_follows_writes_and_only_its_opener_ends_it() {
     let ended = notes.call(Call::SqlUnsubscribe { subscription }).await;
     assert!(matches!(ended, Ok(Reply::Unsubscribed {})));
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn granting_chats_manifest_sets_its_schema_up_at_once() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = CapsulePaths::new(dir.path());
+    let db = Arc::new(StandIn::default());
+    let services = Services {
+        apps: Arc::new(Apps::new(
+            GrantStore::in_memory().unwrap(),
+            TokenKey::fixed([8; 32]),
+        )),
+        blobs: Blobs::open(&paths.blobs_dir(), &paths.registry_db()).unwrap(),
+        events: Events::default(),
+        sql: Sql::new(db.clone()),
+        agents: Arc::new(broker::NoAgents),
+        models: Arc::new(broker::NoModels),
+    };
+    let stack = Arc::new(supervisor::Stack::new(None));
+    let hardware = Arc::new(FixedHardware::with_total(16 << 30));
+    let system = StackSystem::new(stack, None, hardware, Profile::Standard);
+    let bound = broker::bind(&paths.engine_socket()).unwrap();
+    tokio::spawn(broker::serve(bound, system, Arc::new(services)));
+    let shell = Client::start(
+        &tokio::runtime::Handle::current(),
+        unix_connector(paths.engine_socket()),
+        Options::new("test"),
+    );
+
+    // Chat's manifest as Chat declares it: agents, sql, and its schema.
+    let chat = Manifest {
+        id: "com.isonomic.chat".into(),
+        name: "Chat".into(),
+        version: "0.1.0".into(),
+        icon: "message-circle".into(),
+        capabilities: Capabilities {
+            agents: Some(isonomic_proto::manifest::AgentsAccess {}),
+            sql: Some(SqlAccess::default()),
+            ..Default::default()
+        },
+        schemas: vec![Schema {
+            name: "chat".into(),
+        }],
+    };
+    shell.grant(chat).await.unwrap();
+    let mut spins = 0;
+    while db.prepared().is_empty() && spins < 100_000 {
+        tokio::task::yield_now().await;
+        spins += 1;
+    }
+    assert_eq!(db.prepared(), ["com.isonomic.chat"]);
+}
