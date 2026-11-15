@@ -66,7 +66,7 @@ The window's protocol does not change: app tokens stay as R1 describes. What cha
 
 ## R2 · The model gateway (`models` interface)
 
-**Status:** open. **`SDK_REF`:** `2d7b9760323a9d5587712add4d8fe07a094fca15` (isonomic-sdk #4). **Spec:** isonomic-sdk `docs/interfaces/models.md`; every shape is a fixture in `crates/proto/fixtures/v0/models.jsonl`.
+**Status:** done for local models (engine PR #28; see `docs/status.md`). Remote providers are not served in V1. **`SDK_REF`:** `2d7b9760323a9d5587712add4d8fe07a094fca15` (isonomic-sdk #4). **Spec:** isonomic-sdk `docs/interfaces/models.md`; every shape is a fixture in `crates/proto/fixtures/v0/models.jsonl`.
 
 **Moving `SDK_REF` to it:** `WireError` gains a `memory` field, so build errors with `WireError::new(code, message)` or `WireError::memory(refusal)`. `Call`, `Reply` and `ServerMessage` lose `Eq` (temperatures and vectors are floats).
 
