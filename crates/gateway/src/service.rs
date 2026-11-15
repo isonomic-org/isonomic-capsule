@@ -190,6 +190,32 @@ impl Gateway {
     }
 }
 
+impl Gateway {
+    /// The model `models.recommended` names for this machine's own
+    /// profile, if any (none below the memory floor): the one the model
+    /// picker marks.
+    pub fn recommended_id(&self) -> Option<String> {
+        self.recommend(None).ok().map(|r| r.model)
+    }
+
+    /// `sessions.create` naming a model: the rule `models.stream` applies.
+    /// The caller's `models` capability must allow it (`capability_denied`),
+    /// it must exist (`unknown_model`), be installed (`model_unavailable`)
+    /// and be a chat model (`unsupported`). Answers the model's id.
+    pub fn check_session_model(
+        &self,
+        manifest: Option<&Manifest>,
+        model: &str,
+    ) -> Result<String, WireError> {
+        let entry = self.choose(
+            caller(manifest),
+            Some(model),
+            isonomic_inference_core::Capability::Chat,
+        )?;
+        Ok(entry.meta.id.as_str().to_string())
+    }
+}
+
 impl broker::Models for Gateway {
     fn answer<'a>(
         &'a self,

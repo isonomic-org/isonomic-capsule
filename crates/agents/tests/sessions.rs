@@ -52,6 +52,7 @@ async fn engine() -> Engine {
             language: "en".into(),
         },
         profile: Profile::Standard,
+        engine_tools: false,
     };
     let host = agents::start(parts).await.unwrap();
     let services = Services {
