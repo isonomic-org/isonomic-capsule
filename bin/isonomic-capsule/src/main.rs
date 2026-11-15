@@ -7,6 +7,7 @@ use std::process::ExitCode;
 use std::sync::Arc;
 
 use broker::StackSystem;
+use capsule_core::config::ENV_PROFILE;
 use capsule_core::{EngineConfig, HardwareSource, Profile, SystemHardware, Tier};
 use packaging::Bundle;
 use registry::ServiceRegistry;
@@ -28,10 +29,23 @@ async fn run() -> Result<(), AnyError> {
     log(format!("capsule directory: {}", paths.root().display()));
 
     let hardware: Arc<dyn HardwareSource> = Arc::new(SystemHardware);
-    let profile = config
-        .profile_override
-        .unwrap_or_else(|| Profile::detect(hardware.as_ref()));
-    log(format!("hardware profile: {profile}"));
+    if let Some(raw) = &config.profile_override_invalid {
+        log(format!(
+            "{ENV_PROFILE}={raw:?} is not a profile (low, standard, high); probing instead"
+        ));
+    }
+    let (profile, source) = match config.profile_override {
+        Some(profile) => (profile, format!("override {ENV_PROFILE}")),
+        None => {
+            let total = hardware.probe().total_memory_bytes;
+            let gib = total as f64 / (1u64 << 30) as f64;
+            (
+                Profile::from_total_memory(total),
+                format!("detected, {gib:.1} GiB"),
+            )
+        }
+    };
+    log(format!("hardware profile: {profile} ({source})"));
 
     // Tier 0: the registry and the broker socket. Binding first refuses a
     // second engine early and lets the window watch the services start.
@@ -65,7 +79,7 @@ async fn run() -> Result<(), AnyError> {
         ));
     }
 
-    let prepared = postgres::prepare(&layout, ChildEnv::minimal()).await?;
+    let prepared = postgres::prepare(&layout, profile, ChildEnv::minimal()).await?;
     if prepared.initialized_now {
         log("postgres: first-time setup done");
     }
