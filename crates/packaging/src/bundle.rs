@@ -71,9 +71,18 @@ impl Bundle {
         self.root.join(format!("{name}-{}", self.triple))
     }
 
-    /// A program inside a directory-shaped service.
+    /// A program of one service: in this architecture's tree, or else in
+    /// `<name>/`, where the app keeps single programs fused for both
+    /// architectures. When neither exists, the per-architecture path is
+    /// returned so the startup report names what is missing.
     pub fn binary(&self, name: &str, relative: &str) -> PathBuf {
-        self.dir(name).join(relative)
+        let own = self.dir(name).join(relative);
+        let fused = self.root.join(name).join(relative);
+        if !own.exists() && fused.exists() {
+            fused
+        } else {
+            own
+        }
     }
 
     /// Whether a resolved path can be run, for the startup report.
@@ -121,6 +130,21 @@ mod tests {
             beside.binary("postgres", "bin/initdb"),
             Path::new("/opt/isonomic/sidecars/postgres-x86_64-apple-darwin/bin/initdb")
         );
+    }
+
+    #[test]
+    fn a_fused_program_is_found_when_there_is_no_per_architecture_tree() {
+        let root = tempfile::tempdir().unwrap();
+        let bundle = Bundle::new(root.path(), "aarch64-apple-darwin");
+        let expected = root.path().join("cache-aarch64-apple-darwin/cache-server");
+        assert_eq!(bundle.binary("cache", "cache-server"), expected);
+        std::fs::create_dir_all(root.path().join("cache")).unwrap();
+        std::fs::write(root.path().join("cache/cache-server"), "fused").unwrap();
+        let fused = root.path().join("cache/cache-server");
+        assert_eq!(bundle.binary("cache", "cache-server"), fused);
+        std::fs::create_dir_all(expected.parent().unwrap()).unwrap();
+        std::fs::write(&expected, "own").unwrap();
+        assert_eq!(bundle.binary("cache", "cache-server"), expected);
     }
 
     #[cfg(unix)]

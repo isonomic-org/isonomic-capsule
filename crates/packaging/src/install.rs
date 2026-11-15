@@ -5,9 +5,9 @@
 //! its target. An artifact already in place is still architecture-checked:
 //! an install left by an earlier, buggier run is exactly what that catches.
 //!
-//! Directory installs are implemented. The single-file and build-from-source
-//! shapes validate in the manifest and are refused here until a service
-//! that needs them is bundled.
+//! Three shapes, placed by `place`: a directory tree, one program taken out
+//! of an archive, or one program built from a verified source archive. Each
+//! lands in `<outDir>/<name>-<triple>/` with a stamp of the downloaded hash.
 
 use std::path::{Path, PathBuf};
 
@@ -50,8 +50,13 @@ pub enum InstallError {
         problem: String,
         path: PathBuf,
     },
-    #[error("{0}: this install shape is not implemented yet (only directory installs are)")]
-    UnsupportedShape(String),
+    #[error("{label}: the build failed ({status}). Last lines of {}:\n{tail}", log.display())]
+    Build {
+        label: String,
+        status: String,
+        log: PathBuf,
+        tail: String,
+    },
     #[error("{0}: {1}")]
     Archive(String, String),
     #[error("download failed: {0}")]
@@ -73,7 +78,7 @@ pub fn destination(root: &Path, manifest: &Manifest, name: &str, triple: &str) -
         .join(format!("{name}-{triple}"))
 }
 
-fn verify_arch(binary: &Path, triple: &str, label: &str) -> Result<(), InstallError> {
+pub(crate) fn verify_arch(binary: &Path, triple: &str, label: &str) -> Result<(), InstallError> {
     match macho::check_file(binary, triple)? {
         Some(problem) => Err(InstallError::WrongArchitecture {
             label: label.to_string(),
@@ -98,7 +103,7 @@ fn list_files(dir: &Path, root: &Path, out: &mut Vec<String>) {
     }
 }
 
-fn contents(dir: &Path) -> String {
+pub(crate) fn contents(dir: &Path) -> String {
     let mut files = Vec::new();
     list_files(dir, dir, &mut files);
     files.sort();
@@ -128,10 +133,7 @@ pub fn install_one(
     let Some(target) = sidecar.target(triple) else {
         return Ok(Outcome::Skipped("no such target declared"));
     };
-    if !sidecar.is_directory() || sidecar.build.is_some() {
-        return Err(InstallError::UnsupportedShape(label));
-    }
-    let binary_in_dir = sidecar.binary_in_dir.clone().unwrap_or_default();
+    let program = sidecar.program(&target);
     let dest = destination(root, manifest, &sidecar.name, triple);
     let pinned = target.sha256.clone();
     if pinned.is_empty() && !record {
@@ -143,7 +145,7 @@ pub fn install_one(
             .map(|s| s.trim() == pinned)
             .unwrap_or(false);
         if stamped {
-            verify_arch(&dest.join(&binary_in_dir), triple, &label)?;
+            verify_arch(&dest.join(&program), triple, &label)?;
             return Ok(Outcome::AlreadyCurrent);
         }
     }
@@ -164,55 +166,17 @@ pub fn install_one(
         manifest.sidecars[index].pin(triple, &actual);
     }
 
-    // Unpack into the cache, then move the wanted directory into place.
     let work = root
         .join(&manifest.out_dir)
         .join(".cache")
         .join(format!("{}-{triple}", sidecar.name));
     let _ = std::fs::remove_dir_all(&work);
     std::fs::create_dir_all(&work)?;
-    let unpack = tar::Archive::new(flate2::read::GzDecoder::new(payload.as_slice())).unpack(&work);
-    unpack
-        .map_err(|error| InstallError::Archive(label.clone(), format!("cannot unpack: {error}")))?;
-    let member = work.join(target.path_in_archive.as_deref().unwrap_or_default());
-    if !member.is_dir() {
-        let found = contents(&work);
-        let wanted = target.path_in_archive.unwrap_or_default();
-        return Err(InstallError::Archive(
-            label,
-            format!("pathInArchive \"{wanted}\" is not a directory. Archive contains:\n  {found}"),
-        ));
-    }
-    if !member.join(&binary_in_dir).is_file() {
-        let found = contents(&member);
-        return Err(InstallError::Archive(
-            label,
-            format!("binaryInDir \"{binary_in_dir}\" not found. Directory contains:\n  {found}"),
-        ));
-    }
-    let _ = std::fs::remove_dir_all(&dest);
-    std::fs::rename(&member, &dest)?;
+    let placed = crate::place::place(&sidecar, &target, triple, &label, &payload, &work, &dest);
     let _ = std::fs::remove_dir_all(&work);
-
-    // Bundle only the programs the engine runs.
-    if let Some(keep) = &sidecar.keep_in_bin {
-        for entry in std::fs::read_dir(dest.join("bin"))?.flatten() {
-            let name = entry.file_name().to_string_lossy().to_string();
-            if !keep.contains(&name) {
-                std::fs::remove_file(entry.path())?;
-            }
-        }
-    }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(
-            dest.join(&binary_in_dir),
-            std::fs::Permissions::from_mode(0o755),
-        )?;
-    }
+    placed?;
     std::fs::write(dest.join(STAMP), format!("{actual}\n"))?;
-    verify_arch(&dest.join(&binary_in_dir), triple, &label)?;
+    verify_arch(&dest.join(&program), triple, &label)?;
     Ok(if recorded {
         Outcome::Recorded(actual)
     } else {

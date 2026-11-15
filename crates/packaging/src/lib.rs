@@ -3,8 +3,10 @@
 //! Everything the engine runs ships inside the app, pinned and verified:
 //!
 //! - `manifest`: the pinned downloads and the rules a manifest must satisfy.
-//! - `install`: download, verify the SHA-256, unpack, and check the
-//!   architecture of every artifact, including ones already installed.
+//! - `install`: download, verify the SHA-256, and check the architecture of
+//!   every artifact, including ones already installed.
+//! - `place`: put a verified download in place: a directory tree, one
+//!   program, or one program built from verified source.
 //! - `macho`: read which architectures a Mach-O file contains.
 //! - `bundle`: find a bundled binary at run time.
 //!
@@ -16,6 +18,7 @@ pub mod bundle;
 pub mod install;
 pub mod macho;
 pub mod manifest;
+pub mod place;
 
 pub use bundle::{host_triple, BinaryStatus, Bundle};
 pub use install::{install_one, Downloader, InstallError, Outcome};
