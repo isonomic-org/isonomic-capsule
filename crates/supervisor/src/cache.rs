@@ -47,7 +47,9 @@ impl CacheLayout {
 }
 
 /// The config file, rendered before every start (`{socket}` and `{data_dir}`
-/// are filled in by the supervisor).
+/// are filled in by the supervisor). Both paths are quoted: the default
+/// Capsule directory on a Mac is under "Application Support", and the cache
+/// reads an unquoted space as a second argument.
 pub fn config_template(profile: Profile) -> String {
     let policy = match profile {
         Profile::Low => "allkeys-lru",
@@ -56,9 +58,9 @@ pub fn config_template(profile: Profile) -> String {
     format!(
         "# Written by the engine before every start. Edits are overwritten.\n\
          port 0\n\
-         unixsocket {{socket}}\n\
+         unixsocket \"{{socket}}\"\n\
          unixsocketperm 700\n\
-         dir {{data_dir}}\n\
+         dir \"{{data_dir}}\"\n\
          daemonize no\n\
          protected-mode yes\n\
          save \"\"\n\
@@ -119,9 +121,9 @@ mod tests {
         let text = config_template(Profile::Standard);
         for line in [
             "port 0",
-            "unixsocket {socket}",
+            "unixsocket \"{socket}\"",
             "unixsocketperm 700",
-            "dir {data_dir}",
+            "dir \"{data_dir}\"",
             "save \"\"",
             "appendonly no",
         ] {
@@ -131,6 +133,21 @@ mod tests {
             );
         }
         assert!(!text.contains("bind "), "no network listener at all");
+    }
+
+    #[test]
+    fn a_capsule_under_application_support_stays_one_argument() {
+        let socket = Path::new("/Users/me/Library/Application Support/Isonomic/run/cache.sock");
+        let text = crate::spawn::substitute(
+            &config_template(Profile::Standard),
+            &crate::Endpoint::Unix(socket.to_path_buf()),
+            "/Users/me/Library/Application Support/Isonomic/services/cache",
+        );
+        assert!(text.contains(
+            "unixsocket \"/Users/me/Library/Application Support/Isonomic/run/cache.sock\"\n"
+        ));
+        assert!(text
+            .contains("dir \"/Users/me/Library/Application Support/Isonomic/services/cache\"\n"));
     }
 
     #[test]
