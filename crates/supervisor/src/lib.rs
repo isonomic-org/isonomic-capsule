@@ -5,6 +5,7 @@
 //! is built from an allow-list, a service can listen on a Unix socket, and
 //! PostgreSQL gets first-time setup.
 
+pub mod cache;
 pub mod endpoint;
 pub mod env;
 pub mod health;

@@ -1,5 +1,5 @@
 //! The Isonomic engine. Starts tier 0 (registry, broker) and tier 1
-//! (PostgreSQL), logs where each bundled binary resolved and how long the
+//! (PostgreSQL and the cache and queue service), logs where each bundled binary resolved and how long the
 //! cold start took, then serves the `system` interface until asked to stop,
 //! and stops everything in reverse order.
 
@@ -10,6 +10,7 @@ use broker::StackSystem;
 use capsule_core::{EngineConfig, HardwareSource, Profile, SystemHardware, Tier};
 use packaging::Bundle;
 use registry::ServiceRegistry;
+use supervisor::cache::{self, CacheLayout};
 use supervisor::postgres::{self, PostgresLayout};
 use supervisor::{ChildEnv, Stack};
 use tokio::signal::unix::{signal, SignalKind};
@@ -46,7 +47,17 @@ async fn run() -> Result<(), AnyError> {
         data_dir: paths.service_dir(postgres::NAME),
         socket_dir: paths.service_socket_dir(postgres::NAME),
     };
-    for (name, path) in [("postgres", &layout.postgres), ("initdb", &layout.initdb)] {
+    let cache_layout = CacheLayout {
+        program: bundle.binary(cache::SIDECAR, cache::PROGRAM),
+        data_dir: paths.service_dir(cache::NAME),
+        socket_dir: paths.service_socket_dir(cache::NAME),
+    };
+    let programs = [
+        ("postgres", &layout.postgres),
+        ("initdb", &layout.initdb),
+        (cache::NAME, &cache_layout.program),
+    ];
+    for (name, path) in programs {
         log(format!(
             "binary {name}: {} ({})",
             path.display(),
@@ -63,8 +74,13 @@ async fn run() -> Result<(), AnyError> {
     }
     let mut service = prepared.config;
     service.logs_dir = Some(paths.logs_dir());
+    cache::prepare(&cache_layout).await?;
+    let mut cache_service = cache::service(&cache_layout, profile, ChildEnv::minimal());
+    cache_service.logs_dir = Some(paths.logs_dir());
+
     let mut stack = Stack::new(Some(Arc::clone(&registry)));
     stack.add(postgres::NAME, Tier::T1, service);
+    stack.add(cache::NAME, Tier::T1, cache_service);
     let stack = Arc::new(stack);
 
     let system = StackSystem::new(Arc::clone(&stack), Some(registry), hardware, profile);
