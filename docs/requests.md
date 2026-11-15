@@ -2,6 +2,21 @@
 
 What the window's apps need from the engine, filed by the SDK session. Newest first. Each request names the SDK commit that brings its types. The in-memory engine in `isonomic-testkit` already behaves as described unless an item says otherwise, so the SDK's tests are the reference. When a request is done, add the engine commit that closes it.
 
+## R7 · Identity: the Isonomic ID, grants and the check function
+
+**Status:** open. **From:** isonomic-id. **`ID_REF`:** `c67932dffd4c776988cdeb5d0d87870a32c0ad16`. **Spec:** isonomic-id `docs/spec.md` (version 1, frozen); reference bytes in `vectors/v1/vectors.txt`.
+
+The window's protocol does not change: app tokens stay as R1 describes. What changes is what stands behind them.
+
+1. **The person's ID.** On first run, create the person's key log (`id_core::log::Log::create`, kind `Person`) with the device's signing key from `id_keys::MacKeyStore`, and commit to one device and one recovery rotation key. Store the log in the Capsule directory. Its ID (`did:iso:…`) is the workspace root, in place of an account address. The engine signs with the device key itself, so it can sign while the window is closed. Any change to the log needs the person present. `MacKeyStore` makes P-256 keys in the secure chip only when the signed engine carries a keychain access group entitlement; without one it falls back to the login keychain, and `p256_protection()` says which.
+2. **A directory of logs.** Keep a `Directory` of every log the engine has accepted: the person's own, and each agent's and app's, persisted across restarts. If `accept` refuses a log as a fork, show it to the person with the position and whether a recovery key signed it. Never pick a branch automatically.
+3. **Apps get an ID and a grant.** On `apps.grant`, create a log of kind `App` naming the person as controller, and issue a grant from the person's ID to the app's, covering what the approved manifest allows. The token the window holds maps to that grant chain. Revoking the approval revokes the grant.
+4. **Every data call goes through `check`.** Blobs, rows and events become resources (`id_resource::ResourceMeta`: owner, parent, collection, and `derived_from` for summaries, embeddings and indexes). Call `id_check::ChainCache::check` before any work, and answer a deny or an ask with its reason. Keep one cache per broker, so a session verifies its chain once.
+5. **Implement `VersionedWorld`.** Bump the version whenever an accepted log or the revocation list changes; the cache drops every chain when it moves. `World::spent` reports usage from the model gateway against grant budgets.
+6. **"Ask first".** A decision of `Ask` becomes an approval prompt. The approval is the request's `approved` flag for now.
+
+**Check:** isonomic-id `crates/id-check/tests/identities.rs` (a person, an agent and a subagent over real logs; a lost device recovered) and `tests/vectors.rs`, which an engine build can run against its own decoder.
+
 ## R6 · Run the conformance checks
 
 **Status:** done: all 22 checks run in CI and pass (engine PRs #27 to #32). **`SDK_REF`:** `f2545b20ee0faea12f0bece91c243c086ba806c1` (isonomic-sdk #11). **Spec:** isonomic-sdk `docs/conformance.md`.
