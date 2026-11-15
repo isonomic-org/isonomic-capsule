@@ -5,8 +5,14 @@
 //! Built so far: the session log and registry on SQLite, and the token
 //! resolver with user-action tokens.
 
+mod convert;
+pub mod deps;
 mod scopes;
+mod service;
+mod start;
 mod store;
 
 pub use scopes::{EngineScopes, USER_ACTION_TTL_SECS};
+pub use service::{EngineAgents, DELTA_TICK};
+pub use start::{start, Parts};
 pub use store::SqliteSessionStore;

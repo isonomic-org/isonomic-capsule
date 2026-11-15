@@ -6,6 +6,7 @@ edition.workspace = true
 publish.workspace = true
 
 [dependencies]
+agents.workspace = true
 appdb.workspace = true
 broker.workspace = true
 capsule-core.workspace = true
