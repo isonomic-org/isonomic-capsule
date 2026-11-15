@@ -68,7 +68,7 @@ What the window's apps need from the engine, filed by the SDK session. Newest fi
 
 ## R1 · Capability tokens, `apps.grant` and tolerant decoding
 
-**Status:** open. **`SDK_REF`:** `32c09ffa29dd11ea0a25c072978b31f6c2b3b794` (isonomic-sdk #3). **Spec:** isonomic-sdk `docs/interfaces/apps.md`, `docs/interfaces/system.md` and the changelog.
+**Status:** done (engine PRs #26 and #27; see `docs/status.md`). **`SDK_REF`:** `32c09ffa29dd11ea0a25c072978b31f6c2b3b794` (isonomic-sdk #3). **Spec:** isonomic-sdk `docs/interfaces/apps.md`, `docs/interfaces/system.md` and the changelog.
 
 **Moving `SDK_REF` to it** breaks the broker in four places, all in `crates/broker/src/conn.rs`:
 

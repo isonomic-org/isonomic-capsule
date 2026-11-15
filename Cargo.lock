@@ -46,9 +46,13 @@ name = "broker"
 version = "0.0.1"
 dependencies = [
  "capsule-core",
+ "isonomic-client",
+ "isonomic-conformance",
  "isonomic-proto",
  "libc",
  "registry",
+ "serde_json",
+ "sha2",
  "supervisor",
  "tempfile",
  "thiserror",
@@ -440,6 +444,25 @@ dependencies = [
  "registry",
  "supervisor",
  "tempfile",
+ "tokio",
+]
+
+[[package]]
+name = "isonomic-client"
+version = "0.0.1"
+dependencies = [
+ "isonomic-proto",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
+name = "isonomic-conformance"
+version = "0.0.1"
+dependencies = [
+ "isonomic-client",
+ "isonomic-proto",
+ "serde_json",
  "tokio",
 ]
 

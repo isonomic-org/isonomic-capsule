@@ -5,6 +5,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use isonomic_proto::auth::{authorize, Caller};
 use isonomic_proto::io::{read_frame, write_message};
 use isonomic_proto::lenient::{decode_client, FromClient};
 use isonomic_proto::{
@@ -16,6 +17,7 @@ use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
+use crate::apps::Apps;
 use crate::{System, ENGINE_VERSIONS};
 
 const DEFAULT_LOG_LINES: usize = 50;
@@ -63,7 +65,7 @@ fn forward(
     })
 }
 
-pub(crate) async fn handle(stream: UnixStream, system: Arc<dyn System>) {
+pub(crate) async fn handle(stream: UnixStream, system: Arc<dyn System>, apps: Arc<Apps>) {
     let (mut reader, writer) = stream.into_split();
     let (outbox, inbox) = mpsc::channel::<ServerMessage>(256);
     let writer_task = tokio::spawn(write_loop(writer, inbox));
@@ -119,11 +121,30 @@ pub(crate) async fn handle(stream: UnixStream, system: Arc<dyn System>) {
             continue;
         }
 
-        // No app has been granted a token yet (R1), so any token is unknown.
-        // The message never repeats the token.
-        if token.is_some() {
-            let text = "this token was never issued";
-            let _ = outbox.send(error(id, ErrorCode::UnknownToken, text)).await;
+        // Who is calling: no token is the shell; a token is the app it was
+        // issued to, with its approved manifest. Then the capability check,
+        // before any work. Neither answer ever repeats the token.
+        let manifest = match &token {
+            None => None,
+            Some(token) => match apps.manifest(token) {
+                Ok(manifest) => Some(manifest),
+                Err(error) => {
+                    let outcome = Outcome::Error(error);
+                    let _ = outbox.send(ServerMessage::Response { id, outcome }).await;
+                    continue;
+                }
+            },
+        };
+        let caller = match &manifest {
+            None => Caller::Shell,
+            Some(manifest) => Caller::App {
+                id: &manifest.id,
+                capabilities: &manifest.capabilities,
+            },
+        };
+        if let Err(error) = authorize(caller, &call) {
+            let outcome = Outcome::Error(error);
+            let _ = outbox.send(ServerMessage::Response { id, outcome }).await;
             continue;
         }
 
@@ -169,6 +190,13 @@ pub(crate) async fn handle(stream: UnixStream, system: Arc<dyn System>) {
                 then_shut_down = true;
                 Outcome::Result(Reply::ShuttingDown {})
             }
+            Call::AppsGrant { manifest } => match apps.grant(&manifest) {
+                Ok(token) => Outcome::Result(Reply::Granted {
+                    app: manifest.id,
+                    token,
+                }),
+                Err(error) => Outcome::Error(error),
+            },
             other => Outcome::Error(WireError::new(
                 ErrorCode::UnknownMethod,
                 format!("this engine does not serve {} yet", other.method()),

@@ -53,6 +53,12 @@ impl CapsulePaths {
         self.root.join("registry.db")
     }
 
+    /// The secret capability tokens are derived from. It never leaves the
+    /// engine.
+    pub fn token_key(&self) -> PathBuf {
+        self.root.join("secrets").join("token.key")
+    }
+
     /// Where sockets live. Usually `<root>/run`; a short per-user directory
     /// when the root is too deep for a socket path.
     pub fn run_dir(&self) -> &Path {

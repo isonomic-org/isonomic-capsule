@@ -32,6 +32,9 @@ ureq = { version = "2", features = ["native-certs"] }
 # The wire types live in the isonomic-sdk repo. Until both repos exist on
 # GitHub this is a sibling checkout; it becomes a pinned git dependency.
 isonomic-proto = { path = "../isonomic-sdk/crates/proto", features = ["tokio"] }
+# The SDK's client and its conformance checks, for the engine's own tests.
+isonomic-client = { path = "../isonomic-sdk/crates/client" }
+isonomic-conformance = { path = "../isonomic-sdk/crates/conformance" }
 libc = "0.2"
 rusqlite = { version = "0.32", features = ["bundled"] }
 sysinfo = "0.33"

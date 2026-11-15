@@ -1,10 +1,11 @@
 //! Broker: the engine's socket server (architecture spec, section 4.6).
 //!
-//! Milestone 0 serves the `system` interface: status of every service, a
+//! It serves the `system` interface (status of every service, a
 //! subscription to status changes, recent logs, the hardware profile and an
-//! ordered shutdown. Sessions and capability tokens arrive with the app
-//! model.
+//! ordered shutdown) and the `apps` interface, which grants capability
+//! tokens. Every request is checked against its caller's token first.
 
+pub mod apps;
 mod conn;
 pub mod host;
 
@@ -15,6 +16,7 @@ use isonomic_proto::{HardwareProfile, ServiceStatus, SystemStatus};
 use tokio::net::UnixListener;
 use tokio::sync::broadcast;
 
+pub use apps::{Apps, TokenKey};
 pub use host::StackSystem;
 
 /// Protocol versions this engine speaks.
@@ -90,12 +92,13 @@ pub fn bind(socket: &Path) -> Result<EngineSocket, BindError> {
     })
 }
 
-/// Accept connections until the task is dropped.
-pub async fn serve(socket: EngineSocket, system: Arc<dyn System>) {
+/// Accept connections until the task is dropped. `apps` holds the approved
+/// apps and checks every token.
+pub async fn serve(socket: EngineSocket, system: Arc<dyn System>, apps: Arc<Apps>) {
     loop {
         match socket.listener.accept().await {
             Ok((stream, _)) => {
-                tokio::spawn(conn::handle(stream, Arc::clone(&system)));
+                tokio::spawn(conn::handle(stream, Arc::clone(&system), Arc::clone(&apps)));
             }
             Err(_) => tokio::time::sleep(std::time::Duration::from_millis(50)).await,
         }

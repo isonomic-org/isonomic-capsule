@@ -10,9 +10,13 @@ capsule-core.workspace = true
 isonomic-proto.workspace = true
 libc.workspace = true
 registry.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
 supervisor.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 
 [dev-dependencies]
+isonomic-client.workspace = true
+isonomic-conformance.workspace = true
 tempfile.workspace = true
