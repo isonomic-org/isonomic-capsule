@@ -1,6 +1,6 @@
 //! Tests for `stack.rs`: parallel start of a tier, the aggregate status
-//! light, and shutdown in reverse dependency order. Services are shell
-//! stand-ins behind a fake protocol server.
+//! light, shutdown in reverse dependency order, lazy starts and the RAM gate.
+//! Services are shell stand-ins behind a fake protocol server.
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -95,43 +95,33 @@ async fn starts_core_tiers_and_stops_in_reverse_dependency_order() {
     );
 }
 
-/// Stand-in that appends to `starts` each time it is launched, then behaves
-/// like `recorder` (or exits at once when `fail` is set).
-fn counted(dir: &Path, name: &str, fail: bool) -> PathBuf {
+/// Stand-in that stays up until stopped, or exits at once when `fail` is
+/// set.
+fn stand_in(dir: &Path, name: &str, fail: bool) -> PathBuf {
     use std::os::unix::fs::PermissionsExt;
-    let tail = if fail {
-        "exit 3\n".to_string()
+    let body = if fail {
+        "#!/bin/sh\nexit 3\n"
     } else {
-        "trap 'exit 0' TERM\nwhile :; do sleep 0.05; done\n".to_string()
+        "#!/bin/sh\ntrap 'exit 0' TERM\nwhile :; do sleep 0.05; done\n"
     };
-    let body = format!(
-        "#!/bin/sh\necho x >> {0}/starts-{name}\n{tail}",
-        dir.display()
-    );
     let path = dir.join(format!("{name}.sh"));
     std::fs::write(&path, body).unwrap();
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
     path
 }
 
-fn starts(dir: &Path, name: &str) -> usize {
-    std::fs::read_to_string(dir.join(format!("starts-{name}")))
-        .map(|s| s.lines().count())
-        .unwrap_or(0)
-}
-
-/// Launches so far, once the stand-ins have had time to write their line:
-/// readiness comes from the fake server, which can answer before the script
-/// runs.
-async fn launched(dir: &Path, name: &str, at_least: usize) -> usize {
-    for _ in 0..200 {
-        if starts(dir, name) >= at_least {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
-    tokio::time::sleep(Duration::from_millis(100)).await;
-    starts(dir, name)
+/// How many times the supervisor launched a service, from its own log. The
+/// script can't count itself: readiness comes from the fake server, and on a
+/// busy Mac a freshly written script may not run its first line before the
+/// start is over.
+fn launches(stack: &Stack, name: &str) -> usize {
+    stack
+        .get(name)
+        .unwrap()
+        .last_logs()
+        .iter()
+        .filter(|line| line.starts_with("spawned "))
+        .count()
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -140,14 +130,14 @@ async fn a_lazy_service_waits_for_first_use_and_concurrent_callers_share_one_sta
     let mut stack = Stack::new(None);
     stack.add("core", Tier::T1, config(dir.path(), "core").await);
     let mut lazy = config(dir.path(), "lazy").await;
-    lazy.binary_path = counted(dir.path(), "lazy", false);
+    lazy.binary_path = stand_in(dir.path(), "lazy", false);
     stack.add("lazy", Tier::T2, lazy);
     let stack = Arc::new(stack);
 
     stack.start_tier_0_1().await.unwrap();
     assert_eq!(
-        starts(dir.path(), "lazy"),
-        0,
+        stack.get("lazy").unwrap().pid().await,
+        None,
         "tier 2 is not started at boot"
     );
     assert!(idle_lazy(Tier::T2, stack.get("lazy").unwrap().state()));
@@ -161,13 +151,9 @@ async fn a_lazy_service_waits_for_first_use_and_concurrent_callers_share_one_sta
     for caller in callers {
         caller.await.unwrap().unwrap();
     }
-    assert_eq!(
-        launched(dir.path(), "lazy", 1).await,
-        1,
-        "one start for every caller"
-    );
+    assert_eq!(launches(&stack, "lazy"), 1, "one start for every caller");
     stack.ensure_started("lazy").await.unwrap();
-    assert_eq!(launched(dir.path(), "lazy", 1).await, 1, "already running");
+    assert_eq!(launches(&stack, "lazy"), 1, "already running");
     assert_eq!(stack.aggregate_state(), ServiceState::Healthy);
     stack.shutdown().await;
 }
@@ -177,11 +163,12 @@ async fn a_failed_lazy_start_reaches_every_waiter_and_the_next_call_retries() {
     let dir = tempfile::tempdir().unwrap();
     let mut stack = Stack::new(None);
     let mut lazy = config(dir.path(), "broken").await;
-    lazy.binary_path = counted(dir.path(), "broken", true);
-    // Nothing answers on this port, so readiness can only fail.
-    let closed = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-    lazy.port = Some(closed.local_addr().unwrap().port());
-    drop(closed);
+    lazy.binary_path = stand_in(dir.path(), "broken", true);
+    // A listener that never answers, held for the whole test: readiness can
+    // only fail. A port closed again could be taken by another test's fake
+    // server, which would answer.
+    let silent = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    lazy.port = Some(silent.local_addr().unwrap().port());
     lazy.start_timeout = Duration::from_secs(2);
     stack.add("broken", Tier::T2, lazy);
     let stack = Arc::new(stack);
@@ -196,21 +183,21 @@ async fn a_failed_lazy_start_reaches_every_waiter_and_the_next_call_retries() {
     for caller in callers {
         outcomes.push(caller.await.unwrap());
     }
-    assert!(outcomes
-        .iter()
-        .all(|o| matches!(o, Err(LazyError::Failed { .. }))));
+    assert!(
+        outcomes
+            .iter()
+            .all(|o| matches!(o, Err(LazyError::Failed { .. }))),
+        "{outcomes:?}"
+    );
     assert_eq!(
-        starts(dir.path(), "broken"),
+        launches(&stack, "broken"),
         1,
         "waiters share the failed attempt"
     );
     assert!(stack.ensure_started("broken").await.is_err());
-    assert_eq!(
-        launched(dir.path(), "broken", 2).await,
-        2,
-        "a later call tries again"
-    );
+    assert_eq!(launches(&stack, "broken"), 2, "a later call tries again");
     stack.shutdown().await;
+    drop(silent);
 }
 
 #[tokio::test]
@@ -226,4 +213,86 @@ async fn only_known_tier_two_services_start_lazily() {
         stack.ensure_started("nope").await,
         Err(LazyError::Unknown("nope".into()))
     );
+}
+
+fn gate(free_bytes: u64) -> Arc<dyn RamGate> {
+    use capsule_core::{FixedHardware, Hardware, Profile, ProfileRamGate};
+    let hardware = FixedHardware(Hardware {
+        total_memory_bytes: 64 << 30,
+        available_memory_bytes: free_bytes,
+    });
+    Arc::new(ProfileRamGate::new(Profile::High, Arc::new(hardware)).with_headroom(0))
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_ram_gate_admits_a_lazy_service_that_fits() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut stack = Stack::new(None).with_gate(gate(8 << 30));
+    let mut heavy = config(dir.path(), "heavy").await;
+    heavy.binary_path = stand_in(dir.path(), "heavy", false);
+    stack.add_gated("heavy", heavy, 4 << 30);
+
+    stack.ensure_started("heavy").await.unwrap();
+    assert_eq!(launches(&stack, "heavy"), 1);
+    stack.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_refusal_starts_nothing_and_carries_the_numbers() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut stack = Stack::new(None).with_gate(gate(2 << 30));
+    let mut heavy = config(dir.path(), "heavy").await;
+    heavy.binary_path = stand_in(dir.path(), "heavy", false);
+    stack.add_gated("heavy", heavy, 4 << 30);
+
+    match stack.ensure_started("heavy").await {
+        Err(LazyError::Refused { name, denial }) => {
+            assert_eq!(name, "heavy");
+            assert_eq!(denial.required_bytes, 4 << 30);
+            assert_eq!(denial.available_bytes, 2 << 30);
+            assert!(
+                denial.reason.contains("not enough free RAM"),
+                "{}",
+                denial.reason
+            );
+        }
+        other => panic!("expected a refusal, got {other:?}"),
+    }
+    assert_eq!(
+        stack.get("heavy").unwrap().pid().await,
+        None,
+        "nothing was started"
+    );
+    assert!(idle_lazy(Tier::T2, stack.get("heavy").unwrap().state()));
+}
+
+#[tokio::test]
+async fn a_gated_service_without_a_gate_is_not_started_unchecked() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut stack = Stack::new(None);
+    let mut heavy = config(dir.path(), "heavy").await;
+    heavy.binary_path = stand_in(dir.path(), "heavy", false);
+    stack.add_gated("heavy", heavy, 1);
+
+    let outcome = stack.ensure_started("heavy").await;
+    assert!(
+        matches!(outcome, Err(LazyError::Failed { .. })),
+        "{outcome:?}"
+    );
+    assert_eq!(stack.get("heavy").unwrap().pid().await, None);
+}
+
+#[tokio::test]
+async fn an_ungated_lazy_service_does_not_consult_the_gate() {
+    let dir = tempfile::tempdir().unwrap();
+    // A gate that refuses everything: the vector database declares no
+    // footprint, so it starts regardless.
+    let mut stack = Stack::new(None).with_gate(gate(0));
+    let mut light = config(dir.path(), "light").await;
+    light.binary_path = stand_in(dir.path(), "light", false);
+    stack.add("light", Tier::T2, light);
+
+    stack.ensure_started("light").await.unwrap();
+    assert_eq!(launches(&stack, "light"), 1);
+    stack.shutdown().await;
 }

@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use broker::StackSystem;
 use capsule_core::config::ENV_PROFILE;
-use capsule_core::{EngineConfig, HardwareSource, Profile, SystemHardware, Tier};
+use capsule_core::{EngineConfig, HardwareSource, Profile, ProfileRamGate, SystemHardware, Tier};
 use packaging::Bundle;
 use registry::ServiceRegistry;
 use supervisor::cache::{self, CacheLayout};
@@ -92,7 +92,10 @@ async fn run() -> Result<(), AnyError> {
     let mut cache_service = cache::service(&cache_layout, profile, ChildEnv::minimal());
     cache_service.logs_dir = Some(paths.logs_dir());
 
-    let mut stack = Stack::new(Some(Arc::clone(&registry)));
+    // The RAM gate sees the chosen profile, override included, and reads free
+    // memory at each gated start.
+    let gate = ProfileRamGate::new(profile, Arc::clone(&hardware));
+    let mut stack = Stack::new(Some(Arc::clone(&registry))).with_gate(Arc::new(gate));
     stack.add(postgres::NAME, Tier::T1, service);
     stack.add(cache::NAME, Tier::T1, cache_service);
     let stack = Arc::new(stack);

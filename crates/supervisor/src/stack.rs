@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
 use std::time::{Duration, Instant};
 
-use capsule_core::{ServiceState, Tier};
+use capsule_core::{RamDenial, RamGate, ServiceState, Tier};
 use registry::ServiceRegistry;
 
 use crate::service::{ServiceConfig, ServiceError, ServiceSupervisor};
@@ -25,6 +25,9 @@ pub enum LazyError {
     NotLazy(String),
     #[error("{name} did not start: {reason}")]
     Failed { name: String, reason: String },
+    /// The RAM gate refused it; nothing was started.
+    #[error("{name} was not started: {denial}")]
+    Refused { name: String, denial: RamDenial },
 }
 
 /// One lazy service's start, shared: callers queue on the lock, and a caller
@@ -40,6 +43,9 @@ struct LazyStart {
 pub struct StackService {
     pub tier: Tier,
     pub supervisor: Arc<ServiceSupervisor>,
+    /// Bytes the RAM gate must admit before each start. Only tier-2 services
+    /// carry one.
+    pub memory_bytes: Option<u64>,
     lazy: Arc<LazyStart>,
 }
 
@@ -48,6 +54,7 @@ pub struct Stack {
     services: BTreeMap<String, StackService>,
     order: Vec<String>,
     registry: Option<Arc<ServiceRegistry>>,
+    gate: Option<Arc<dyn RamGate>>,
 }
 
 impl Stack {
@@ -56,7 +63,15 @@ impl Stack {
             services: BTreeMap::new(),
             order: Vec::new(),
             registry,
+            gate: None,
         }
+    }
+
+    /// The RAM gate consulted before starting a service added with
+    /// `add_gated`. The engine passes the profile gate; tests pass their own.
+    pub fn with_gate(mut self, gate: Arc<dyn RamGate>) -> Self {
+        self.gate = Some(gate);
+        self
     }
 
     /// Register a service at a tier. Insertion order within a tier is the
@@ -67,13 +82,34 @@ impl Stack {
         tier: Tier,
         config: ServiceConfig,
     ) -> Arc<ServiceSupervisor> {
-        let name = name.into();
+        self.insert(name.into(), tier, config, None)
+    }
+
+    /// Register a lazy service that the RAM gate must admit, at
+    /// `memory_bytes`, before every start.
+    pub fn add_gated(
+        &mut self,
+        name: impl Into<String>,
+        config: ServiceConfig,
+        memory_bytes: u64,
+    ) -> Arc<ServiceSupervisor> {
+        self.insert(name.into(), Tier::T2, config, Some(memory_bytes))
+    }
+
+    fn insert(
+        &mut self,
+        name: String,
+        tier: Tier,
+        config: ServiceConfig,
+        memory_bytes: Option<u64>,
+    ) -> Arc<ServiceSupervisor> {
         let supervisor = Arc::new(ServiceSupervisor::new(config, self.registry.clone()));
         self.services.insert(
             name.clone(),
             StackService {
                 tier,
                 supervisor: Arc::clone(&supervisor),
+                memory_bytes,
                 lazy: Arc::default(),
             },
         );
@@ -145,7 +181,9 @@ impl Stack {
 
     /// Start a tier-2 service on first use and wait for it to be healthy.
     /// Concurrent callers share one start; a failure is reported to every
-    /// caller that waited on it, and the next call tries again.
+    /// caller that waited on it, and the next call tries again. A gated
+    /// service is checked against the RAM gate before each start, and a
+    /// refusal starts nothing.
     pub async fn ensure_started(&self, name: &str) -> Result<(), LazyError> {
         let entry = self
             .services
@@ -166,19 +204,41 @@ impl Stack {
                 return outcome;
             }
         }
-        let outcome =
-            entry
-                .supervisor
-                .start()
-                .await
-                .map(|_| ())
-                .map_err(|error| LazyError::Failed {
-                    name: name.to_string(),
-                    reason: error.to_string(),
-                });
+        let outcome = match self.admit(name, entry) {
+            Err(refused) => Err(refused),
+            Ok(()) => {
+                entry
+                    .supervisor
+                    .start()
+                    .await
+                    .map(|_| ())
+                    .map_err(|error| LazyError::Failed {
+                        name: name.to_string(),
+                        reason: error.to_string(),
+                    })
+            }
+        };
         *lazy.last.lock().expect("lazy outcome") = Some(outcome.clone());
         lazy.attempts.fetch_add(1, Ordering::SeqCst);
         outcome
+    }
+
+    /// The RAM gate's verdict for a gated service. A gated service without a
+    /// gate is refused to start rather than started unchecked.
+    fn admit(&self, name: &str, entry: &StackService) -> Result<(), LazyError> {
+        let Some(bytes) = entry.memory_bytes else {
+            return Ok(());
+        };
+        let Some(gate) = &self.gate else {
+            return Err(LazyError::Failed {
+                name: name.to_string(),
+                reason: "it needs the RAM gate and none is configured".to_string(),
+            });
+        };
+        gate.admit(bytes).map_err(|denial| LazyError::Refused {
+            name: name.to_string(),
+            denial,
+        })
     }
 
     /// Aggregate status light: Degraded if any
