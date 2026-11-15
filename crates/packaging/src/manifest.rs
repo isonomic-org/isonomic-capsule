@@ -98,6 +98,33 @@ impl Sidecar {
             .and_then(|value| serde_json::from_value(value.clone()).ok())
     }
 
+    /// Where the program sits inside its install directory: `binaryInDir`
+    /// for a tree, else the file name of what the build produces or of the
+    /// archive member, else the sidecar's own name.
+    pub fn program(&self, target: &Target) -> String {
+        if self.is_directory() {
+            return self.binary_in_dir.clone().unwrap_or_default();
+        }
+        let file_name = |path: &str| {
+            Path::new(path)
+                .file_name()
+                .map(|name| name.to_string_lossy().to_string())
+        };
+        let produced = self
+            .build
+            .as_ref()
+            .and_then(|build| build.get("producesPath"))
+            .and_then(Value::as_str);
+        let member = match target.archive.as_str() {
+            "none" => None,
+            _ => target.path_in_archive.as_deref(),
+        };
+        produced
+            .or(member)
+            .and_then(file_name)
+            .unwrap_or_else(|| self.name.clone())
+    }
+
     /// Record a hash for one target.
     pub fn pin(&mut self, triple: &str, sha256: &str) {
         if let Some(Value::Object(target)) = self.targets.get_mut(triple) {
