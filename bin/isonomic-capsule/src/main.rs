@@ -113,10 +113,10 @@ async fn run() -> Result<(), AnyError> {
 
     let system = StackSystem::new(Arc::clone(&stack), Some(registry), hardware, profile);
     let services = broker::Services {
-        apps: broker::Apps::new(
+        apps: Arc::new(broker::Apps::new(
             registry::GrantStore::open(&paths.registry_db())?,
             broker::TokenKey::load_or_create(&paths.token_key())?,
-        ),
+        )),
         blobs: broker::Blobs::open(&paths.blobs_dir(), &paths.registry_db())
             .map_err(|e| e.message)?,
         events: broker::Events::default(),

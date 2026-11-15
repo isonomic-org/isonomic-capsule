@@ -28,7 +28,7 @@ Engine lifecycle: `Host::new(Deps, HostConfig)` at start, `recover()` before the
 
 ## Order of work
 
-1. `SessionStore` on SQLite, with harness-host's own store tests run against it (needs only harness).
-2. `ScopeResolver` over `broker::Apps`, and user-action tokens.
+1. `SessionStore` on SQLite. **Done.**
+2. `ScopeResolver` over `broker::Apps`, and user-action tokens. **Done.**
 3. Once #16 merges and the orchestrator says so: move `SDK_REF`, send `welcome.schema`, serve the 22 `agents` methods, run the `agents.` conformance group.
 4. `ModelClient` once the gateway exists; then one real Chat turn end to end.

@@ -42,6 +42,7 @@ isonomic-conformance = { path = "../isonomic-sdk/crates/conformance" }
 # The harness, at the URL and rev the SDK pins, so cargo builds one copy of
 # harness-core and the event types match the SDK's.
 harness-core = { git = "ssh://git@github.com/isonomic-org/isonomic-harness.git", rev = "7a73ca695254d415332ef39bae2b100e4f791b6c" }
+harness-host = { git = "ssh://git@github.com/isonomic-org/isonomic-harness.git", rev = "7a73ca695254d415332ef39bae2b100e4f791b6c" }
 harness-log = { git = "ssh://git@github.com/isonomic-org/isonomic-harness.git", rev = "7a73ca695254d415332ef39bae2b100e4f791b6c" }
 libc = "0.2"
 rusqlite = { version = "0.32", features = ["bundled"] }

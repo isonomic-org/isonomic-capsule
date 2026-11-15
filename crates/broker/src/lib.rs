@@ -102,7 +102,8 @@ pub fn bind(socket: &Path) -> Result<EngineSocket, BindError> {
 /// What the broker serves beyond `system`: the approved apps (which check
 /// every token) and each app interface.
 pub struct Services {
-    pub apps: Apps,
+    /// Shared with the agents host, which resolves the same tokens.
+    pub apps: Arc<Apps>,
     pub blobs: Blobs,
     pub events: Events,
     pub sql: Sql,
