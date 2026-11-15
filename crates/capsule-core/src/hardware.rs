@@ -9,6 +9,8 @@
 //! The machine is read through `HardwareSource`, so tests inject their own.
 
 use std::fmt;
+
+use crate::memory::Pressure;
 use std::time::Duration;
 
 const GIB: u64 = 1024 * 1024 * 1024;
@@ -22,7 +24,10 @@ const GIB: u64 = 1024 * 1024 * 1024;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Hardware {
     pub total_memory_bytes: u64,
+    /// What a new process can have now without paging anything out.
     pub available_memory_bytes: u64,
+    /// The system's own memory pressure, where it reports one.
+    pub pressure: Pressure,
 }
 
 /// Where hardware facts come from. Injectable so profile selection and the RAM
@@ -40,9 +45,21 @@ impl HardwareSource for SystemHardware {
     fn probe(&self) -> Hardware {
         let mut sys = sysinfo::System::new();
         sys.refresh_memory();
+        let total_memory_bytes = sys.total_memory();
+        // On macOS the kernel's own page counts: the library's figure there
+        // leaves out the inactive pages the system hands out on demand.
+        #[cfg(target_os = "macos")]
+        if let Some((pages, pressure)) = crate::memory::read_macos() {
+            return Hardware {
+                total_memory_bytes,
+                available_memory_bytes: pages.reclaimable_bytes().min(total_memory_bytes),
+                pressure,
+            };
+        }
         Hardware {
-            total_memory_bytes: sys.total_memory(),
+            total_memory_bytes,
             available_memory_bytes: sys.available_memory(),
+            pressure: Pressure::Unknown,
         }
     }
 }
@@ -57,6 +74,7 @@ impl FixedHardware {
         Self(Hardware {
             total_memory_bytes,
             available_memory_bytes: total_memory_bytes,
+            pressure: Pressure::Normal,
         })
     }
 }

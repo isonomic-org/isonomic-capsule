@@ -220,6 +220,7 @@ fn gate(free_bytes: u64) -> Arc<dyn RamGate> {
     let hardware = FixedHardware(Hardware {
         total_memory_bytes: 64 << 30,
         available_memory_bytes: free_bytes,
+        pressure: capsule_core::Pressure::Normal,
     });
     Arc::new(ProfileRamGate::new(Profile::High, Arc::new(hardware)).with_headroom(0))
 }
@@ -251,7 +252,7 @@ async fn a_refusal_starts_nothing_and_carries_the_numbers() {
             assert_eq!(denial.required_bytes, 4 << 30);
             assert_eq!(denial.available_bytes, 2 << 30);
             assert!(
-                denial.reason.contains("not enough free RAM"),
+                denial.reason.contains("Not enough free memory"),
                 "{}",
                 denial.reason
             );
