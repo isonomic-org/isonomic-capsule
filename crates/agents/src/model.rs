@@ -40,11 +40,13 @@ impl GatewayModel {
     }
 }
 
+/// A message's words. Request context (the date, the language) is left
+/// out: it goes to the system message, see [`request`].
 fn text(parts: &[Part]) -> String {
     let mut out = String::new();
     for part in parts {
         let piece = match part {
-            Part::Text { text } | Part::Context { text } | Part::Summary { text } => text,
+            Part::Text { text } | Part::Summary { text } => text,
             Part::Attachment { name, text, .. } => {
                 out.push_str(&format!("[{name}]\n"));
                 text
@@ -62,10 +64,27 @@ fn text(parts: &[Part]) -> String {
 }
 
 /// The harness's request as the gateway takes it.
+///
+/// The request context the harness puts in a user turn ("Current date: …")
+/// moves to the end of the system message, latest only. Small local models
+/// read it there as background; glued to the person's words, it made them
+/// ask which day was meant instead of answering.
 fn request(model: Option<String>, req: &ModelRequest) -> StreamRequest {
     let mut messages = Vec::with_capacity(req.messages.len() + 1);
-    if !req.system.is_empty() {
-        messages.push(Message::system(req.system.clone()));
+    let context = req.messages.iter().rev().find_map(|m| {
+        m.content.iter().rev().find_map(|p| match p {
+            Part::Context { text } => Some(text.clone()),
+            _ => None,
+        })
+    });
+    let system = match (req.system.is_empty(), context) {
+        (true, None) => None,
+        (false, None) => Some(req.system.clone()),
+        (true, Some(context)) => Some(context),
+        (false, Some(context)) => Some(format!("{}\n\n{context}", req.system)),
+    };
+    if let Some(system) = system {
+        messages.push(Message::system(system));
     }
     for m in &req.messages {
         let role = match m.role {
@@ -132,6 +151,9 @@ impl ModelClient for GatewayModel {
                 }
             };
             let mut stop = ModelStop::End;
+            // The server streams about one token per chunk and reports no
+            // usage through the provider, so chunks stand in for tokens.
+            let mut chunks: u64 = 0;
             while let Some(item) = stream.next().await {
                 if cancel.is_cancelled() {
                     return;
@@ -143,6 +165,10 @@ impl ModelClient for GatewayModel {
                         return;
                     }
                 };
+                let reasoned = chunk.reasoning.as_ref().is_some_and(|r| !r.is_empty());
+                if !chunk.delta.is_empty() || reasoned {
+                    chunks += 1;
+                }
                 if let Some(reasoning) = chunk.reasoning.filter(|r| !r.is_empty()) {
                     if tx.send(Ok(ModelEvent::Reasoning(reasoning))).await.is_err() {
                         return;
@@ -157,7 +183,10 @@ impl ModelClient for GatewayModel {
                     stop = ModelStop::MaxTokens;
                 }
             }
-            let usage = Usage::default();
+            let usage = Usage {
+                output_tokens: chunks,
+                ..Usage::default()
+            };
             let _ = tx.send(Ok(ModelEvent::Done { stop, usage })).await;
         });
         Box::pin(Events(rx))
@@ -197,9 +226,30 @@ mod tests {
         .unwrap();
         let out = request(Some("chat-small".into()), &req);
         let roles: Vec<_> = out.messages.iter().map(|m| m.role).collect();
+        assert_eq!(out.messages[0].content, "Be brief.");
         assert_eq!(roles, [Role::System, Role::User, Role::Assistant]);
         assert_eq!(out.messages[2].content, "One, two,");
         assert_eq!(out.max_tokens, Some(256));
         assert_eq!(out.reasoning, Some(false));
+    }
+
+    #[test]
+    fn the_request_context_moves_from_the_user_turn_to_the_system_message() {
+        let req: ModelRequest = serde_json::from_value(serde_json::json!({
+            "model": "local:default",
+            "params": {"max_output_tokens": 64, "reasoning": "off"},
+            "system": "Be brief.",
+            "messages": [{"role": "user", "content": [
+                {"type": "context", "text": "Current date: Sunday, 15 November 2026. Language: en."},
+                {"type": "text", "text": "Plan one day in Lisbon."}
+            ]}]
+        }))
+        .unwrap();
+        let out = request(None, &req);
+        assert_eq!(
+            out.messages[0].content,
+            "Be brief.\n\nCurrent date: Sunday, 15 November 2026. Language: en."
+        );
+        assert_eq!(out.messages[1].content, "Plan one day in Lisbon.");
     }
 }
