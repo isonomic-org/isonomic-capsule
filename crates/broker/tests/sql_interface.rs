@@ -44,7 +44,10 @@ async fn a_live_query_follows_writes_and_only_its_opener_ends_it() {
     let paths = CapsulePaths::new(dir.path());
     let db = Arc::new(StandIn::default());
     let services = Services {
-        apps: Apps::new(GrantStore::in_memory().unwrap(), TokenKey::fixed([3; 32])),
+        apps: Arc::new(Apps::new(
+            GrantStore::in_memory().unwrap(),
+            TokenKey::fixed([3; 32]),
+        )),
         blobs: Blobs::open(&paths.blobs_dir(), &paths.registry_db()).unwrap(),
         events: Events::default(),
         sql: Sql::new(db.clone()),

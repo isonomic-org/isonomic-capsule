@@ -24,10 +24,10 @@ async fn conform(paths: &CapsulePaths, stack: Arc<Stack>, db: Arc<dyn Database>)
     let hardware = Arc::new(FixedHardware::with_total(16 << 30));
     let system = StackSystem::new(stack, None, hardware, Profile::Standard);
     let services = Services {
-        apps: Apps::new(
+        apps: Arc::new(Apps::new(
             GrantStore::open(&paths.registry_db()).unwrap(),
             TokenKey::load_or_create(&paths.token_key()).unwrap(),
-        ),
+        )),
         blobs: Blobs::open(&paths.blobs_dir(), &paths.registry_db()).unwrap(),
         events: Events::default(),
         sql: Sql::new(db),

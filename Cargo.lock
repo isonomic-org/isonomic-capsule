@@ -12,8 +12,13 @@ checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 name = "agents"
 version = "0.0.1"
 dependencies = [
+ "broker",
+ "capsule-core",
  "harness-core",
+ "harness-host",
  "harness-log",
+ "isonomic-proto",
+ "registry",
  "rusqlite",
  "serde",
  "serde_json",
@@ -468,11 +473,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "harness-compact"
+version = "0.1.0"
+source = "git+ssh://git@github.com/isonomic-org/isonomic-harness.git?rev=7a73ca695254d415332ef39bae2b100e4f791b6c#7a73ca695254d415332ef39bae2b100e4f791b6c"
+dependencies = [
+ "harness-core",
+ "harness-log",
+]
+
+[[package]]
 name = "harness-core"
 version = "0.1.0"
 source = "git+ssh://git@github.com/isonomic-org/isonomic-harness.git?rev=7a73ca695254d415332ef39bae2b100e4f791b6c#7a73ca695254d415332ef39bae2b100e4f791b6c"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "harness-host"
+version = "0.1.0"
+source = "git+ssh://git@github.com/isonomic-org/isonomic-harness.git?rev=7a73ca695254d415332ef39bae2b100e4f791b6c#7a73ca695254d415332ef39bae2b100e4f791b6c"
+dependencies = [
+ "harness-core",
+ "harness-log",
+ "harness-loop",
+ "harness-policy",
+ "harness-preset",
+ "harness-toolkit",
+ "harness-tools",
 ]
 
 [[package]]
@@ -483,6 +511,56 @@ dependencies = [
  "harness-core",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "harness-loop"
+version = "0.1.0"
+source = "git+ssh://git@github.com/isonomic-org/isonomic-harness.git?rev=7a73ca695254d415332ef39bae2b100e4f791b6c#7a73ca695254d415332ef39bae2b100e4f791b6c"
+dependencies = [
+ "harness-compact",
+ "harness-core",
+ "harness-log",
+ "harness-policy",
+ "harness-preset",
+ "harness-tools",
+ "serde_json",
+]
+
+[[package]]
+name = "harness-policy"
+version = "0.1.0"
+source = "git+ssh://git@github.com/isonomic-org/isonomic-harness.git?rev=7a73ca695254d415332ef39bae2b100e4f791b6c#7a73ca695254d415332ef39bae2b100e4f791b6c"
+dependencies = [
+ "harness-core",
+]
+
+[[package]]
+name = "harness-preset"
+version = "0.1.0"
+source = "git+ssh://git@github.com/isonomic-org/isonomic-harness.git?rev=7a73ca695254d415332ef39bae2b100e4f791b6c#7a73ca695254d415332ef39bae2b100e4f791b6c"
+dependencies = [
+ "harness-core",
+ "harness-policy",
+ "serde",
+ "toml",
+]
+
+[[package]]
+name = "harness-toolkit"
+version = "0.1.0"
+source = "git+ssh://git@github.com/isonomic-org/isonomic-harness.git?rev=7a73ca695254d415332ef39bae2b100e4f791b6c#7a73ca695254d415332ef39bae2b100e4f791b6c"
+dependencies = [
+ "harness-core",
+ "harness-tools",
+]
+
+[[package]]
+name = "harness-tools"
+version = "0.1.0"
+source = "git+ssh://git@github.com/isonomic-org/isonomic-harness.git?rev=7a73ca695254d415332ef39bae2b100e4f791b6c#7a73ca695254d415332ef39bae2b100e4f791b6c"
+dependencies = [
+ "harness-core",
 ]
 
 [[package]]
@@ -1208,6 +1286,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_spanned"
+version = "1.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9c187e0a369471c550af028cba56d4f4fa2a489ad28151ae95a4d340a2a8b782"
+dependencies = [
+ "serde_core",
+]
+
+[[package]]
 name = "sha2"
 version = "0.10.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1486,6 +1573,37 @@ dependencies = [
  "libc",
  "pin-project-lite",
  "tokio",
+]
+
+[[package]]
+name = "toml"
+version = "0.9.12+spec-1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cf92845e79fc2e2def6a5d828f0801e29a2f8acc037becc5ab08595c7d5e9863"
+dependencies = [
+ "serde_core",
+ "serde_spanned",
+ "toml_datetime",
+ "toml_parser",
+ "winnow 0.7.15",
+]
+
+[[package]]
+name = "toml_datetime"
+version = "0.7.5+spec-1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "92e1cfed4a3038bc5a127e35a2d360f145e1f4b971b551a2ba5fd7aedf7e1347"
+dependencies = [
+ "serde_core",
+]
+
+[[package]]
+name = "toml_parser"
+version = "1.1.5+spec-1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "baa693a8032d7e1cada7d0041e96126df243179ff061456783ac7f12bda4744c"
+dependencies = [
+ "winnow 1.0.5",
 ]
 
 [[package]]
@@ -1863,6 +1981,18 @@ name = "windows_x86_64_msvc"
 version = "0.52.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "589f6da84c646204747d1270a2a5661ea66ed1cced2631d546fdfb155959f9ec"
+
+[[package]]
+name = "winnow"
+version = "0.7.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "df79d97927682d2fd8adb29682d1140b343be4ac0f08fd68b7765d9c059d3945"
+
+[[package]]
+name = "winnow"
+version = "1.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8c3b93199df0ab874cdf0c6a94f0a0dc3423fe41f1cafb62b8bd7b1deb277aef"
 
 [[package]]
 name = "wit-bindgen"
