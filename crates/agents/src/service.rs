@@ -3,12 +3,16 @@
 //! capability; the host decides what each caller reaches.
 //!
 //! Approval, question and call ids are minted per session, so the wire and
-//! the host both name the target by (session, id). A stream awaits durable
-//! events and live deltas alike (`Subscription::next_update`).
+//! the host both name the target by (session, id). The host answers a late
+//! client tool result with `Ok` and an audit record, so a call id that was
+//! never issued in the session is checked here, to stay `not_found` on the
+//! wire. A stream awaits durable events and live deltas alike
+//! (`Subscription::next_update`).
 
 use std::sync::Arc;
 
 use broker::agents::{AgentsAnswer, BoxFuture, Starter};
+use harness_core::{CallId, Event as LogEvent, SessionId};
 use harness_host::{
     AnswerInput, AppKind, Caller, ClientOutcome, CreateOptions, Host, HostError, Input,
     Subscription, Update, UserActionToken,
@@ -21,7 +25,7 @@ use crate::convert;
 
 pub struct EngineAgents {
     host: Host,
-    _store: Arc<dyn SessionStore>,
+    store: Arc<dyn SessionStore>,
 }
 
 fn caller(manifest: Option<&Manifest>) -> Caller {
@@ -39,14 +43,31 @@ impl EngineAgents {
     /// Serve `host`, whose log is `store`. Call [`Host::recover`] before
     /// the broker serves.
     pub fn new(host: Host, store: Arc<dyn SessionStore>) -> Self {
-        Self {
-            host,
-            _store: store,
-        }
+        Self { host, store }
     }
 
     pub fn host(&self) -> &Host {
         &self.host
+    }
+
+    /// Whether `call` is a tool call of `session`, per its log.
+    async fn has_call(&self, session: &SessionId, call: &CallId) -> bool {
+        let mut after = 0;
+        loop {
+            let Ok(page) = self.store.read(session, after, 512).await else {
+                return false;
+            };
+            let Some(last) = page.last() else {
+                return false;
+            };
+            after = last.seq;
+            let found = page
+                .iter()
+                .any(|e| matches!(&e.event, LogEvent::ToolCall(c) if &c.call == call));
+            if found {
+                return true;
+            }
+        }
     }
 
     async fn reply(&self, who: &Caller, call: Call) -> Result<AgentsAnswer, WireError> {
@@ -148,6 +169,11 @@ impl EngineAgents {
                 done(host.register_client_tools(who, &t.session, t.specs).await)?
             }
             Call::ToolsResult(r) => {
+                // The caller must reach the session, and the call must be its.
+                host.open_session(who, &r.session).await.map_err(err)?;
+                if !self.has_call(&r.session, &r.call).await {
+                    return Err(convert::error(HostError::NotFound));
+                }
                 let outcome = match r.error {
                     Some(error) => ClientOutcome::Error(error, r.content),
                     None => ClientOutcome::Ok(r.content),

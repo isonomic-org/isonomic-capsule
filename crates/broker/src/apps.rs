@@ -14,6 +14,9 @@ use registry::{Grant, GrantStore};
 use sha2::{Digest, Sha256};
 
 const KEY_BYTES: usize = 32;
+
+/// The owner of the shell's own agent sessions.
+pub const RESERVED_SHELL_ID: &str = "shell";
 const TOKEN_PREFIX: &str = "tok-";
 
 /// The engine's token secret. `Debug` never prints it.
@@ -121,6 +124,12 @@ impl Apps {
 
     /// `apps.grant`: validate, persist, then answer with the token.
     pub fn grant(&self, manifest: &Manifest) -> Result<Token, WireError> {
+        // Sessions the shell creates are owned by the app id `shell`; no app
+        // may ever hold it.
+        if manifest.id == RESERVED_SHELL_ID {
+            let message = format!("the app id {RESERVED_SHELL_ID:?} is reserved");
+            return Err(WireError::new(ErrorCode::InvalidManifest, message));
+        }
         manifest
             .validate()
             .map_err(|error| WireError::new(ErrorCode::InvalidManifest, error.to_string()))?;

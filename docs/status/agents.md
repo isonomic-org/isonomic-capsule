@@ -2,12 +2,13 @@
 
 Newest first. The host for agent sessions (`crates/agents`), over the harness host.
 
-## 2026-11-15 · Agents: ready for the host's (session, id) keys (isonomic-harness #37; not pinned yet)
+## 2026-11-15 · Agents: the host's (session, id) keys (isonomic-harness #37)
 
-- On branch `feat/harness-37`, built and tested against isonomic-harness #37's head (`e14f8da`) with both this workspace and the SDK pointed at it locally. It moves onto `main` when the orchestrator gives the SDK commit carrying the same harness rev.
-- `approvals.decide`, `questions.answer` and `tools.result` pass the wire's `session` to the host, which now keys pending work by (session, id); the adapter's own checks of the pair are gone. `sessions.purge` passes the app (the caller's own, or the one the shell names). User-action tokens are minted and checked per (session, approval).
+- Built and tested against harness main `f061211` (#37 merged). The pin moves with the SDK commit that carries the same rev.
+- `approvals.decide`, `questions.answer` and `tools.result` pass the wire's `session` to the host, which now keys pending work by (session, id); the adapter's own checks of the pair are gone, except for a tool result: the host answers a late result for a call id never issued with `Ok` and an audit record, so the adapter still looks for the call in the session's log and answers `not_found` otherwise. `sessions.purge` passes the app (the caller's own, or the one the shell names). User-action tokens are minted and checked per (session, approval).
 - Streams await `Subscription::next_update()`, durable events and live deltas alike, so the 40 ms drain is gone (isonomic-harness #32).
-- Against `e14f8da`: the hermetic suite, the end-to-end turns, and conformance 28 of 28 pass.
+- `apps.grant` refuses the app id `shell`, which owns the shell's own sessions.
+- Against `f061211`: the hermetic suite, the end-to-end turns, and conformance 28 of 28 pass.
 
 ## 2026-11-15 · Agents: stop and continue on local models
 

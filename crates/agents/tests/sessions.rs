@@ -225,3 +225,20 @@ async fn welcome_names_the_schema_the_host_writes() {
     let schema = live.borrow().schema;
     assert_eq!(schema, Some(isonomic_proto::agents::SchemaVersion::CURRENT));
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_tool_result_for_a_call_never_issued_is_not_found() {
+    let engine = engine().await;
+    let chat = app(&engine, "chat").await;
+    let session = chat.agents().create("chat").await.unwrap();
+    let result = isonomic_proto::agents::ClientToolResult {
+        session: session.clone(),
+        call: serde_json::from_value(serde_json::json!("cal_9999")).unwrap(),
+        content: vec![],
+        error: None,
+    };
+    match chat.agents().tool_result(result).await {
+        Err(ClientError::Engine(e)) => assert_eq!(e.code, ErrorCode::NotFound),
+        other => panic!("a bogus call id was accepted: {other:?}"),
+    }
+}
