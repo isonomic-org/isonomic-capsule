@@ -4,8 +4,9 @@
 //! but is no superuser and cannot create roles or databases. It owns the
 //! schemas its manifest declares. For each schema listed under
 //! `capabilities.sql.schemas` it gets usage and select, on the tables there
-//! now and on those the schema's owner creates later. Nobody but owners
-//! reaches the `public` schema.
+//! now and on those the schema's owner creates later; a schema the manifest
+//! no longer lists is taken back. Nobody but owners reaches the `public`
+//! schema.
 
 use isonomic_proto::Manifest;
 use sha2::{Digest, Sha256};
@@ -106,12 +107,44 @@ pub(crate) async fn provision(
         }
     }
 
-    let mut setup = Setup::Complete;
-    let listed = manifest
+    let listed: Vec<&String> = manifest
         .capabilities
         .sql
         .iter()
-        .flat_map(|sql| &sql.schemas);
+        .flat_map(|sql| &sql.schemas)
+        .collect();
+
+    // Read access the manifest no longer lists is taken back: every schema
+    // this role was granted usage on but does not own.
+    let granted = admin
+        .query(
+            "SELECT n.nspname::text, pg_get_userbyid(n.nspowner)::text
+             FROM pg_namespace n, aclexplode(n.nspacl) a
+             WHERE a.grantee = (SELECT oid FROM pg_roles WHERE rolname = $1)
+               AND a.privilege_type = 'USAGE' AND n.nspowner <> a.grantee",
+            &[&role],
+        )
+        .await
+        .map_err(db_error)?;
+    for row in granted {
+        let (schema, owner): (String, String) = (row.get(0), row.get(1));
+        if listed.contains(&&schema) {
+            continue;
+        }
+        admin
+            .batch_execute(&format!(
+                "ALTER DEFAULT PRIVILEGES FOR ROLE {o} IN SCHEMA {s} REVOKE SELECT ON TABLES FROM {r};
+                 REVOKE ALL ON ALL TABLES IN SCHEMA {s} FROM {r};
+                 REVOKE USAGE ON SCHEMA {s} FROM {r};",
+                s = quote(&schema),
+                r = quote(&role),
+                o = quote(&owner)
+            ))
+            .await
+            .map_err(db_error)?;
+    }
+
+    let mut setup = Setup::Complete;
     for schema in listed {
         let owner: Option<String> = admin
             .query_opt(

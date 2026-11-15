@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex as SyncMutex};
 
 use isonomic_proto::sql::{Column, Statement};
 use isonomic_proto::{ErrorCode, Rows, SqlValue, WireError};
-use tokio::sync::{Mutex, OnceCell};
+use tokio::sync::{broadcast, Mutex, OnceCell};
 use tokio_postgres::types::ToSql;
 use tokio_postgres::{Client, Config, NoTls, Transaction};
 
@@ -33,6 +33,7 @@ pub struct PgDatabase {
     clients: Mutex<HashMap<String, Arc<Mutex<Client>>>>,
     /// Apps whose setup is complete for their current manifest.
     ready: SyncMutex<HashSet<String>>,
+    written: broadcast::Sender<()>,
 }
 
 /// The database's own message for an error, else the driver's.
@@ -72,6 +73,7 @@ impl PgDatabase {
             created: OnceCell::new(),
             clients: Mutex::new(HashMap::new()),
             ready: SyncMutex::new(HashSet::new()),
+            written: broadcast::channel(64).0,
         }
     }
 
@@ -150,6 +152,21 @@ impl PgDatabase {
         Ok(role_name(&manifest.id))
     }
 
+    /// Commit, and tick `written` if the transaction wrote anything. The
+    /// database knows: a transaction id is assigned only on a write.
+    async fn commit(&self, tx: Transaction<'_>) -> Result<(), WireError> {
+        let row = tx
+            .query_one("SELECT txid_current_if_assigned() IS NOT NULL", &[])
+            .await
+            .map_err(failure)?;
+        let wrote: bool = row.get(0);
+        tx.commit().await.map_err(failure)?;
+        if wrote {
+            let _ = self.written.send(());
+        }
+        Ok(())
+    }
+
     fn lock_ready(&self) -> std::sync::MutexGuard<'_, HashSet<String>> {
         self.ready.lock().unwrap_or_else(|p| p.into_inner())
     }
@@ -223,7 +240,7 @@ impl Database for PgDatabase {
                 }
                 out.push(values);
             }
-            tx.commit().await.map_err(failure)?;
+            self.commit(tx).await?;
             Ok(Rows { columns, rows: out })
         })
     }
@@ -246,7 +263,7 @@ impl Database for PgDatabase {
                 .execute(&statement, &dyn_refs(&values))
                 .await
                 .map_err(failure)?;
-            tx.commit().await.map_err(failure)?;
+            self.commit(tx).await?;
             Ok(n)
         })
     }
@@ -273,12 +290,16 @@ impl Database for PgDatabase {
                 counts.push(n);
             }
             // Dropping the transaction on any error above rolls it back.
-            tx.commit().await.map_err(failure)?;
+            self.commit(tx).await?;
             Ok(counts)
         })
     }
 
     fn forget(&self, app: &str) {
         self.lock_ready().remove(app);
+    }
+
+    fn written(&self) -> broadcast::Receiver<()> {
+        self.written.subscribe()
     }
 }

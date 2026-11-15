@@ -14,10 +14,20 @@ use crate::{BoxFuture, Database, Runner};
 /// shell), the schema and the text.
 pub type Ran = (Option<String>, String, String);
 
-#[derive(Default)]
 pub struct StandIn {
     scripted: Mutex<HashMap<String, Rows>>,
     ran: Mutex<Vec<Ran>>,
+    written: tokio::sync::broadcast::Sender<()>,
+}
+
+impl Default for StandIn {
+    fn default() -> Self {
+        Self {
+            scripted: Mutex::default(),
+            ran: Mutex::default(),
+            written: tokio::sync::broadcast::channel(64).0,
+        }
+    }
 }
 
 impl StandIn {
@@ -62,6 +72,7 @@ impl Database for StandIn {
         _: &'a [SqlValue],
     ) -> BoxFuture<'a, Result<u64, WireError>> {
         self.record(runner, schema, sql);
+        let _ = self.written.send(());
         Box::pin(async { Ok(0) })
     }
 
@@ -75,8 +86,14 @@ impl Database for StandIn {
             self.record(runner, schema, &one.sql);
         }
         let counts = vec![0; statements.len()];
+        let _ = self.written.send(());
         Box::pin(async move { Ok(counts) })
     }
 
     fn forget(&self, _: &str) {}
+
+    /// Ticks after every `execute` and `batch` (reads change nothing here).
+    fn written(&self) -> tokio::sync::broadcast::Receiver<()> {
+        self.written.subscribe()
+    }
 }

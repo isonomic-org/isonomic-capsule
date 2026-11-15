@@ -11,6 +11,12 @@ Newest first. This file is the engine's status from now on. The history of each 
 
 New entries go at the top of this file, naming the area. The spec stays in `isonomic-desktop/docs/architecture/`.
 
+## 2026-11-15 · `appdb`: dropped read grants are revoked; every write wakes live queries
+
+- Re-granting an app whose manifest no longer lists a schema takes its read access back: usage, select on the tables there, and the default privilege for tables made later. Found from the role's own grants in the schema ACLs.
+- Live queries wake on every committed transaction that wrote, whichever method ran it (a write sent through `sql.query` included) and whichever engine part shares the database. The database decides: a transaction id is assigned only on a write. Reads wake nothing.
+- Both checked on the real server (`appdb`'s `real_database` test). The two deviations listed under R5 are closed.
+
 ## 2026-11-15 · Agents: the `agents` interface served by the harness host
 
 - `SDK_REF` is `21ed50d` (isonomic-sdk #16 and #19: the agents interface and the `agents.` conformance checks). The SDK pins harness-core at the same URL and rev as this repo (`7a73ca6`). `welcome` carries `schema`, the session event schema the host writes.
@@ -43,7 +49,7 @@ New entries go at the top of this file, naming the area. The spec stays in `ison
 - Each call is one transaction with the search path set for it alone. Placeholders use the extended protocol, so one call is one statement. A batch is one transaction. Values: null, boolean, integers, floats, text, bytes; uuid, json, jsonb, date and timestamps arrive as text; other types (numeric, intervals, arrays) answer `sql_error` asking for a cast. Columns report the database's own type names (`int8`, `text`, `timestamptz`).
 - Live queries listen before their first run and run again after every committed write through the interface; the subscriber gets the whole new result only when it changed. A result larger than one frame answers `sql_error`.
 - **Verified on a real server:** `appdb`'s `real_database` test and the conformance suite's opt-in run both start PostgreSQL 16 through the engine's own setup and supervisor (Linux, as a non-root user). The conformance suite passes **22 of 22** there. The hermetic CI run uses a stand-in database below the schema rules and also passes 22 of 22.
-- Deviations: a read-only schema removed from a manifest keeps its grant until revoking is built. Writes made outside this interface (the shell's migrations through `sql.execute` count; a direct connection does not) do not wake live queries.
+- Deviations (both closed since): a read-only schema removed from a manifest kept its grant; writes outside this interface did not wake live queries.
 
 ## 2026-11-15 · Broker: app events (SDK request R4)
 
