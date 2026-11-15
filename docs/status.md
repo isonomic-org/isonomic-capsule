@@ -11,6 +11,10 @@ Newest first. This file is the engine's status from now on. The history of each 
 
 New entries go at the top of this file, naming the area. The spec stays in `isonomic-desktop/docs/architecture/`.
 
+## 2026-11-15 · Engine: stays headless as apps get their UI through the SDK
+
+- Decision (Omar, through the orchestrator): apps reach Isonomic UI, and later the shared toolkits (an editor and a node-graph toolkit), through the SDK, compiled into the window once. The engine is unaffected: it serves the wire interfaces and knows nothing about windows (rule 9). Its `UI_REF` exists only so cargo can read the SDK workspace's manifests; nothing here builds the UI.
+
 ## 2026-11-15 · Agents: the token resolver and user-action tokens
 
 - `EngineScopes`, the harness host's `ScopeResolver`: a capability token resolves through `broker::Apps`, exactly as the broker resolves it, to `Caller::app(id, FirstParty)`; an unknown token is `Unauthorized`. Every app the engine grants is first-party; Views and third-party code get their kinds when they arrive.
