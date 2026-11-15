@@ -2,6 +2,41 @@
 
 What the window's apps need from the engine, filed by the SDK session. Newest first. Each request names the SDK commit that brings its types. The in-memory engine in `isonomic-testkit` already behaves as described unless an item says otherwise, so the SDK's tests are the reference. When a request is done, add the engine commit that closes it.
 
+## R6 · Run the conformance checks
+
+**Status:** open. **Types:** isonomic-sdk #11. **Spec:** isonomic-sdk `docs/conformance.md`.
+
+1. **Add `isonomic-conformance`** as a dev-dependency at the same `SDK_REF`, start a test engine in a temporary Capsule directory, and run `isonomic_conformance::run(unix_connector(socket))` against it in CI. Each failure names the rule it broke.
+2. **Grow into it.** Until every interface is in, run a subset with `run_only`: the `wire.` and `tokens.` checks once R1 lands, then each interface's group as it does (`blobs.`, `events.`, `sql.`).
+3. **Never against a user's Capsule.** The checks grant test apps (ids under `com.isonomic.conformance`), store and delete small blobs, and end by sending `system.shutdown` with an app's token, which must be refused.
+
+**Check:** the SDK's `crates/conformance/tests/testkit.rs`: the testkit passes all 22 checks, and an engine that ignores tokens fails every token, privacy and scope check.
+
+## R5 · App databases (`sql` interface)
+
+**Status:** open. **Types:** isonomic-sdk #10 (`needs-master`). **Spec:** isonomic-sdk `docs/interfaces/sql.md`; every shape is a fixture in `crates/proto/fixtures/v0/sql.jsonl`.
+
+1. **Five methods:** `sql.query`, `sql.execute`, `sql.batch`, `sql.subscribe`, `sql.unsubscribe`, on the Capsule's database. `proto::auth::authorize` already refuses an app without the `sql` capability.
+2. **Schemas and roles.** On `apps.grant`, create each schema the manifest declares, owned by a role for that app, and give that role read-only access to the schemas listed in `capabilities.sql.schemas`. Run each call as the app's role, in the schema `proto::auth::authorize_schema(manifest, schema, write)` returns (`write` is true for `execute` and `batch`). The roles are the real guard: a write sent through `sql.query` to a listed schema is refused by the database (`sql_error`). The shell runs in the schema it names.
+3. **Values.** Parameters are positional (`$1`, `$2`, …). `SqlValue` maps to null, boolean, 64-bit integer, double, text and bytes; each column reports the database's own type name.
+4. **A batch is one transaction:** every statement or none, with one count per statement.
+5. **Live queries.** Reply `live_query { subscription, rows }` with the result now, then send `rows_changed` with the whole new result after each committed write that changes it. Re-running the query when a write touches a table it reads is enough; send nothing when the result is unchanged. Only the token that opened it can end it (`unknown_subscription` otherwise, as R2 item 5); a closed connection ends it.
+6. **Errors.** A statement the database refuses answers `sql_error` with the database's message. Keep a reply within `MAX_FRAME_BYTES`: a larger result answers `sql_error`, so apps page with `limit`.
+
+**Check:** the SDK's `crates/testkit/tests/sql.rs` (the testkit's database is scripted; it runs no SQL) and the conformance check `sql.schemas`.
+
+## R4 · App events (`events` interface)
+
+**Status:** open. **Types:** isonomic-sdk #9 (`needs-master`). **Spec:** isonomic-sdk `docs/interfaces/events.md`; every shape is a fixture in `crates/proto/fixtures/v0/events.jsonl`.
+
+1. **Three methods:** `events.publish`, `events.subscribe`, `events.unsubscribe`. No capability: `proto::auth::authorize` already keeps an app in its own scope and lets only the shell name another app's (`app`).
+2. **One scope per app**, shared by every connection, so an app's tabs and windows hear each other. A subscriber gets `app_event { topic, data, sender }` for each publish in its scope whose topic it listens to (`proto::events::matches`; no topics means all). Refuse a topic that fails `proto::events::valid_topic` with `bad_request`.
+3. **Live, at most once.** Nothing is stored or replayed. Answer `published {}` once the event is handed to current subscribers; drop events for a subscriber that falls behind rather than slow the publisher.
+4. **Unsubscribe belongs to the token that subscribed** (`unknown_subscription` otherwise); a closed connection ends its subscriptions.
+5. **`data` is the app's own JSON.** Pass it through untouched and keep it out of logs.
+
+**Check:** the SDK's `crates/testkit/tests/events.rs` and the conformance checks `events.round_trip`, `events.scoped`, `events.shell_reaches_app` and `subscriptions.owner_only`.
+
 ## R3 · Blob storage (`blobs` interface)
 
 **Status:** open. **Types:** isonomic-sdk #8 (`needs-master`); its changelog entry will name the `SDK_REF` commit. **Spec:** isonomic-sdk `docs/interfaces/blobs.md`; every shape is a fixture in `crates/proto/fixtures/v0/blobs.jsonl`.
