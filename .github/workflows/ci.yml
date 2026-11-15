@@ -22,3 +22,5 @@ jobs:
       # The SDK workspace names isonomic-ui; cargo needs it to read the
       # manifests. Nothing here builds it.
       ui: true
+      # The agents adapter depends on harness-core and harness-host.
+      harness: true
