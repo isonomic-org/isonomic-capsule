@@ -13,6 +13,8 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::Duration;
 
+use capsule_core::Profile;
+
 use crate::env::ChildEnv;
 use crate::probe::Readiness;
 use crate::service::{ServiceConfig, StopSignal};
@@ -113,10 +115,17 @@ pub async fn ensure_initialized(
     Ok(true)
 }
 
-/// The supervised-service definition. `unclean` extends the start deadline.
-pub fn service(layout: &PostgresLayout, env: ChildEnv, unclean: bool) -> ServiceConfig {
+/// The supervised-service definition. `unclean` extends the start deadline;
+/// the profile sets the shared buffers.
+pub fn service(
+    layout: &PostgresLayout,
+    profile: Profile,
+    env: ChildEnv,
+    unclean: bool,
+) -> ServiceConfig {
     let mut config = ServiceConfig::new(NAME, layout.postgres.clone());
     let port = SOCKET_PORT.to_string();
+    let buffers = format!("shared_buffers={}", profile.shared_buffers());
     config.args = [
         "-D",
         "{data_dir}",
@@ -128,6 +137,8 @@ pub fn service(layout: &PostgresLayout, env: ChildEnv, unclean: bool) -> Service
         "listen_addresses=",
         "-c",
         "unix_socket_permissions=0700",
+        "-c",
+        buffers.as_str(),
     ]
     .map(String::from)
     .to_vec();
@@ -159,7 +170,11 @@ pub struct Prepared {
 
 /// Everything that must happen before the supervisor starts PostgreSQL: a
 /// user-only socket directory, first-time setup, unclean-shutdown detection.
-pub async fn prepare(layout: &PostgresLayout, env: ChildEnv) -> Result<Prepared, PostgresError> {
+pub async fn prepare(
+    layout: &PostgresLayout,
+    profile: Profile,
+    env: ChildEnv,
+) -> Result<Prepared, PostgresError> {
     tokio::fs::create_dir_all(&layout.socket_dir).await?;
     #[cfg(unix)]
     {
@@ -170,7 +185,7 @@ pub async fn prepare(layout: &PostgresLayout, env: ChildEnv) -> Result<Prepared,
     let initialized_now = ensure_initialized(layout, &env).await?;
     let unclean_shutdown = !initialized_now && had_unclean_shutdown(&layout.data_dir);
     Ok(Prepared {
-        config: service(layout, env, unclean_shutdown),
+        config: service(layout, profile, env, unclean_shutdown),
         initialized_now,
         unclean_shutdown,
     })

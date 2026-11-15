@@ -28,7 +28,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         data_dir: paths.service_dir(postgres::NAME),
         socket_dir: paths.service_socket_dir(postgres::NAME),
     };
-    let prepared = postgres::prepare(&layout, ChildEnv::minimal()).await?;
+    let prepared =
+        postgres::prepare(&layout, capsule_core::Profile::Low, ChildEnv::minimal()).await?;
     println!(
         "setup: initialized_now={} unclean_shutdown={}",
         prepared.initialized_now, prepared.unclean_shutdown

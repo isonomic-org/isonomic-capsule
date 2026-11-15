@@ -22,6 +22,9 @@ pub struct EngineConfig {
     /// A user override of the hardware profile. An unreadable value is
     /// dropped, which triggers a fresh probe.
     pub profile_override: Option<Profile>,
+    /// The override as given, when it could not be read, so the engine can
+    /// say why it probed instead.
+    pub profile_override_invalid: Option<String>,
 }
 
 impl EngineConfig {
@@ -42,13 +45,14 @@ impl EngineConfig {
             }
             None => None,
         };
-        let profile_override = var(ENV_PROFILE)
-            .and_then(|v| v.into_string().ok())
-            .and_then(|v| Profile::parse(v.trim()));
+        let raw = var(ENV_PROFILE).map(|v| v.to_string_lossy().into_owned());
+        let profile_override = raw.as_deref().and_then(Profile::parse);
+        let profile_override_invalid = raw.filter(|_| profile_override.is_none());
         Ok(Self {
             paths,
             bundle_dir,
             profile_override,
+            profile_override_invalid,
         })
     }
 
@@ -104,11 +108,15 @@ mod tests {
             lookup(&[(ENV_CAPSULE_DIR, "/c"), (ENV_PROFILE, " low ")]),
             None,
         );
-        assert_eq!(good.unwrap().profile_override, Some(Profile::Low));
+        let good = good.unwrap();
+        assert_eq!(good.profile_override, Some(Profile::Low));
+        assert_eq!(good.profile_override_invalid, None);
         let bad = EngineConfig::resolve(
             lookup(&[(ENV_CAPSULE_DIR, "/c"), (ENV_PROFILE, "huge")]),
             None,
         );
-        assert_eq!(bad.unwrap().profile_override, None);
+        let bad = bad.unwrap();
+        assert_eq!(bad.profile_override, None);
+        assert_eq!(bad.profile_override_invalid.as_deref(), Some("huge"));
     }
 }
