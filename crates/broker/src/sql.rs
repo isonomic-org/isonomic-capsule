@@ -3,8 +3,9 @@
 //!
 //! `proto::auth::authorize_schema` picks the schema and refuses what the
 //! manifest does not allow; the database's roles enforce it again. A live
-//! query is run again after every committed write through this interface,
-//! and its subscriber is sent the whole new result only when it changed.
+//! query is run again after every committed transaction that wrote, through
+//! any method or engine path that shares the database, and its subscriber
+//! is sent the whole new result only when it changed.
 
 use std::sync::Arc;
 
@@ -22,8 +23,6 @@ const FRAME_MARGIN: usize = 4096;
 
 pub struct Sql {
     db: Arc<dyn Database>,
-    /// Ticks after every committed write.
-    written: broadcast::Sender<()>,
 }
 
 /// What a sql call leads to.
@@ -50,10 +49,7 @@ fn fits(rows: Rows) -> Result<Rows, WireError> {
 
 impl Sql {
     pub fn new(db: Arc<dyn Database>) -> Self {
-        Self {
-            db,
-            written: broadcast::channel(64).0,
-        }
+        Self { db }
     }
 
     /// An app's approval changed: set its database access up again.
@@ -86,13 +82,11 @@ impl Sql {
             } => {
                 let schema = authorize_schema(manifest, schema.as_deref(), true)?;
                 let rows_affected = self.db.execute(who, &schema, &sql, &params).await?;
-                let _ = self.written.send(());
                 Ok(Answer::Reply(Reply::Executed { rows_affected }))
             }
             Call::SqlBatch { statements, schema } => {
                 let schema = authorize_schema(manifest, schema.as_deref(), true)?;
                 let rows_affected = self.db.batch(who, &schema, &statements).await?;
-                let _ = self.written.send(());
                 Ok(Answer::Reply(Reply::ExecutedBatch { rows_affected }))
             }
             Call::SqlSubscribe {
@@ -102,7 +96,7 @@ impl Sql {
             } => {
                 let schema = authorize_schema(manifest, schema.as_deref(), false)?;
                 // Listen before the first run, so no write falls between.
-                let written = self.written.subscribe();
+                let written = self.db.written();
                 let rows = fits(self.db.query(who, &schema, &sql, &params).await?)?;
                 let live = LiveQuery {
                     db: Arc::clone(&self.db),

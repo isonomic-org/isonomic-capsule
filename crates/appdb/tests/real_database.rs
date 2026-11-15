@@ -183,12 +183,41 @@ async fn each_apps_role_is_the_real_guard() {
         "belongs to another app",
     );
 
+    // A re-granted manifest that no longer lists `notes` loses the read.
+    let narrowed = app("reader", &["reader"], &[]);
+    db.forget(&narrowed.id);
+    let runner = Runner::App(&narrowed);
+    refused(
+        db.query(runner, "reader", "select body from notes.items", &[])
+            .await,
+        "permission denied",
+    );
+
+    // Every committed write ticks, whatever method ran it; reads do not.
+    let mut written = db.written();
+    db.query(n, "notes", "select count(*) from items", &[])
+        .await
+        .unwrap();
+    assert!(written.try_recv().is_err(), "a read ticked");
+    db.query(
+        n,
+        "notes",
+        "insert into items (id) values (3) returning id",
+        &[],
+    )
+    .await
+    .unwrap();
+    assert!(
+        written.try_recv().is_ok(),
+        "a write through query did not tick"
+    );
+
     // The shell runs as the engine's role in the schema it names.
     let all = db
         .query(Runner::Shell, "notes", "select count(*) from items", &[])
         .await
         .unwrap();
-    assert_eq!(all.rows, [[SqlValue::Int(1)]]);
+    assert_eq!(all.rows, [[SqlValue::Int(2)]]);
 
     stack.shutdown().await;
 }

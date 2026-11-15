@@ -68,6 +68,10 @@ pub trait Database: Send + Sync + 'static {
     /// An app's approval changed: its role, schemas and read access are
     /// set up again before its next statement.
     fn forget(&self, app: &str);
+
+    /// Ticks after every committed transaction that wrote, whichever
+    /// method or engine path ran it.
+    fn written(&self) -> tokio::sync::broadcast::Receiver<()>;
 }
 
 /// The database refused, with its own message.
