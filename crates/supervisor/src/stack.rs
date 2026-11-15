@@ -6,7 +6,8 @@
 //! data directories are plain inputs from the engine.
 
 use std::collections::BTreeMap;
-use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex as StdMutex};
 use std::time::{Duration, Instant};
 
 use capsule_core::{ServiceState, Tier};
@@ -14,10 +15,32 @@ use registry::ServiceRegistry;
 
 use crate::service::{ServiceConfig, ServiceError, ServiceSupervisor};
 
+/// Why a lazy service could not be started. Shared by every caller that
+/// waited on the same attempt.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum LazyError {
+    #[error("no service named {0}")]
+    Unknown(String),
+    #[error("{0} is not on the lazy tier")]
+    NotLazy(String),
+    #[error("{name} did not start: {reason}")]
+    Failed { name: String, reason: String },
+}
+
+/// One lazy service's start, shared: callers queue on the lock, and a caller
+/// that waited through someone else's attempt takes that attempt's outcome.
+#[derive(Default)]
+struct LazyStart {
+    lock: tokio::sync::Mutex<()>,
+    attempts: AtomicU64,
+    last: StdMutex<Option<Result<(), LazyError>>>,
+}
+
 /// One service's placement in the stack.
 pub struct StackService {
     pub tier: Tier,
     pub supervisor: Arc<ServiceSupervisor>,
+    lazy: Arc<LazyStart>,
 }
 
 /// The service stack.
@@ -51,6 +74,7 @@ impl Stack {
             StackService {
                 tier,
                 supervisor: Arc::clone(&supervisor),
+                lazy: Arc::default(),
             },
         );
         self.order.push(name);
@@ -119,6 +143,44 @@ impl Stack {
         Ok(started.elapsed())
     }
 
+    /// Start a tier-2 service on first use and wait for it to be healthy.
+    /// Concurrent callers share one start; a failure is reported to every
+    /// caller that waited on it, and the next call tries again.
+    pub async fn ensure_started(&self, name: &str) -> Result<(), LazyError> {
+        let entry = self
+            .services
+            .get(name)
+            .ok_or_else(|| LazyError::Unknown(name.to_string()))?;
+        if entry.tier != Tier::T2 {
+            return Err(LazyError::NotLazy(name.to_string()));
+        }
+        let lazy = &entry.lazy;
+        let seen = lazy.attempts.load(Ordering::SeqCst);
+        let _turn = lazy.lock.lock().await;
+        if entry.supervisor.state() == ServiceState::Healthy {
+            return Ok(());
+        }
+        if lazy.attempts.load(Ordering::SeqCst) != seen {
+            // An attempt finished while this caller waited: share its outcome.
+            if let Some(outcome) = lazy.last.lock().expect("lazy outcome").clone() {
+                return outcome;
+            }
+        }
+        let outcome =
+            entry
+                .supervisor
+                .start()
+                .await
+                .map(|_| ())
+                .map_err(|error| LazyError::Failed {
+                    name: name.to_string(),
+                    reason: error.to_string(),
+                });
+        *lazy.last.lock().expect("lazy outcome") = Some(outcome.clone());
+        lazy.attempts.fetch_add(1, Ordering::SeqCst);
+        outcome
+    }
+
     /// Aggregate status light: Degraded if any
     /// service is degraded, else Healthy only if every service is healthy, else
     /// Starting if any is starting, else Stopped.
@@ -154,6 +216,13 @@ impl Stack {
             }
         }
     }
+}
+
+/// A tier-2 service that is not running is idle, not down. The broker leaves
+/// it out of `system.status` (and so out of the window's light) until it is
+/// first started. `Stack::aggregate_state` keeps its ported behaviour.
+pub fn idle_lazy(tier: Tier, state: ServiceState) -> bool {
+    tier == Tier::T2 && state == ServiceState::Stopped
 }
 
 #[cfg(all(test, unix))]

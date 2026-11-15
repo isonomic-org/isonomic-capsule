@@ -1,6 +1,4 @@
 {
-  "$note": "Pinned downloads of the services the engine runs. Binaries are never committed: `cargo xtask fetch-sidecars` downloads them and verifies each against the sha256 here. An entry marked draft is declared but not yet pinned; one marked deferred is pinned but not bundled until its milestone. Everything else fails closed.",
-  "$universal": "Do not declare a universal-apple-darwin target. Single-file binaries are fused from the two Apple slices; directory trees ship once per architecture and the running slice picks its own.",
   "version": 1,
   "outDir": "sidecars",
   "sidecars": [
@@ -8,6 +6,7 @@
       "name": "caddy",
       "version": "2.11.4",
       "license": "Apache-2.0",
+      "deferred": true,
       "targets": {
         "aarch64-apple-darwin": {
           "url": "https://github.com/caddyserver/caddy/releases/download/v2.11.4/caddy_2.11.4_mac_arm64.tar.gz",
@@ -21,13 +20,13 @@
           "archive": "tar.gz",
           "pathInArchive": "caddy"
         }
-      },
-      "deferred": true
+      }
     },
     {
       "name": "seaweedfs",
       "version": "4.41",
       "license": "Apache-2.0",
+      "deferred": true,
       "targets": {
         "aarch64-apple-darwin": {
           "url": "https://github.com/seaweedfs/seaweedfs/releases/download/4.41/darwin_arm64.tar.gz",
@@ -41,13 +40,13 @@
           "archive": "tar.gz",
           "pathInArchive": "weed"
         }
-      },
-      "deferred": true
+      }
     },
     {
       "name": "llama-server",
       "version": "b10331",
       "license": "MIT",
+      "deferred": true,
       "install": "directory",
       "binaryInDir": "llama-server",
       "targets": {
@@ -63,8 +62,7 @@
           "archive": "tar.gz",
           "pathInArchive": "llama-b10331"
         }
-      },
-      "deferred": true
+      }
     },
     {
       "name": "valkey",
@@ -98,11 +96,41 @@
       }
     },
     {
+      "name": "qdrant",
+      "version": "1.20.1",
+      "license": "Apache-2.0",
+      "deferred": true,
+      "targets": {
+        "aarch64-apple-darwin": {
+          "url": "https://github.com/qdrant/qdrant/releases/download/v1.20.1/qdrant-aarch64-apple-darwin.tar.gz",
+          "sha256": "5deb80dfa44afea90fa27bb3fcd269e60b1e88347e769f2547a0269aadb37003",
+          "archive": "tar.gz",
+          "pathInArchive": "qdrant"
+        },
+        "x86_64-apple-darwin": {
+          "url": "https://github.com/qdrant/qdrant/releases/download/v1.20.1/qdrant-x86_64-apple-darwin.tar.gz",
+          "sha256": "5f3ae5d62d476788f0c529b6f9276d5517e9c70b4707ef6374c1cceea4369597",
+          "archive": "tar.gz",
+          "pathInArchive": "qdrant"
+        },
+        "x86_64-unknown-linux-gnu": {
+          "url": "https://github.com/qdrant/qdrant/releases/download/v1.20.1/qdrant-x86_64-unknown-linux-gnu.tar.gz",
+          "sha256": "bf0b7d2ce2e0608ceecc135e6803133849385ad317226c2749fdb2c126b63cf6",
+          "archive": "tar.gz",
+          "pathInArchive": "qdrant"
+        }
+      }
+    },
+    {
       "name": "postgres",
       "version": "18.4.0",
       "license": "PostgreSQL",
       "install": "directory",
       "binaryInDir": "bin/postgres",
+      "keepInBin": [
+        "postgres",
+        "initdb"
+      ],
       "targets": {
         "aarch64-apple-darwin": {
           "url": "https://github.com/theseus-rs/postgresql-binaries/releases/download/18.4.0/postgresql-18.4.0-aarch64-apple-darwin.tar.gz",
@@ -123,11 +151,9 @@
           "pathInArchive": "postgresql-18.4.0-x86_64-unknown-linux-gnu"
         }
       },
-      "keepInBin": [
-        "postgres",
-        "initdb"
-      ],
       "$note": "A distribution tree, not one binary: the server needs its bin, lib and share siblings. Both Apple hashes were confirmed against the vendor's published .sha256 files. Only the two programs the engine runs are kept from bin."
     }
-  ]
+  ],
+  "$note": "Pinned downloads of the services the engine runs. Binaries are never committed: `cargo xtask fetch-sidecars` downloads them and verifies each against the sha256 here. An entry marked draft is declared but not yet pinned; one marked deferred is pinned but not bundled until its milestone. Everything else fails closed.",
+  "$universal": "Do not declare a universal-apple-darwin target. Single-file binaries are fused from the two Apple slices; directory trees ship once per architecture and the running slice picks its own."
 }

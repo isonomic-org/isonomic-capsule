@@ -16,6 +16,7 @@ pub mod probe;
 pub mod service;
 mod spawn;
 pub mod stack;
+pub mod vector;
 
 use std::time::Duration;
 
@@ -25,7 +26,7 @@ pub use env::ChildEnv;
 pub use logsink::LogSink;
 pub use probe::Readiness;
 pub use service::{ConfigFile, ServiceConfig, ServiceError, ServiceSupervisor, StopSignal};
-pub use stack::{Stack, StackService};
+pub use stack::{LazyError, Stack, StackService};
 
 /// First wait between readiness probes while a service starts.
 pub const FIRST_STARTING_PROBE: Duration = Duration::from_millis(50);
