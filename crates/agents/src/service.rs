@@ -352,10 +352,10 @@ fn refused(app: &str, method: &str, e: &WireError) {
         .ok()
         .and_then(|v| v.as_str().map(str::to_string))
         .unwrap_or_else(|| format!("{:?}", e.code));
-    eprintln!(
-        "[isonomic-capsule] info: {method} from {app} refused: {code}: {}",
+    capsule_core::log::line(&format!(
+        "info: {method} from {app} refused: {code}: {}",
         e.message
-    );
+    ));
 }
 
 /// Forward a session's events, and its live deltas between them, as
@@ -393,4 +393,19 @@ fn stream(mut sub: Subscription, session: SessionId) -> Starter {
             })
         },
     )
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn a_refused_call_is_in_the_engines_log_ring() {
+        let e = super::WireError::new(super::ErrorCode::CapabilityDenied, "no agents access");
+        super::refused("com.isonomic.notes", "sessions.create", &e);
+        let tail = capsule_core::log::tail();
+        assert!(
+            tail.iter().any(|l| l
+                == "info: sessions.create from com.isonomic.notes refused: capability_denied: no agents access"),
+            "{tail:?}"
+        );
+    }
 }

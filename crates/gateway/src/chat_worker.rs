@@ -51,7 +51,7 @@ pub fn configure(config: &mut LlamaConfig, entry: &ModelEntry, models_dir: &Path
             path.to_string_lossy().into_owned(),
         ]),
         // The model's own template still works, only slower between turns.
-        Err(e) => eprintln!("[isonomic-capsule] warning: chat template not written: {e}"),
+        Err(e) => capsule_core::log::line(&format!("warning: chat template not written: {e}")),
     }
 }
 
