@@ -21,12 +21,21 @@ use harness_log::SessionStore;
 use isonomic_proto::{Call, ErrorCode, Event, Manifest, Reply, ServerMessage, WireError};
 use tokio::sync::mpsc;
 
+use gateway::Gateway;
+
 use crate::convert;
 
 pub struct EngineAgents {
     host: Host,
     store: Arc<dyn SessionStore>,
+    /// Checks the model a session is created with; `None` passes any name
+    /// (a host on a scripted model, in tests).
+    gateway: Option<Arc<Gateway>>,
 }
+
+/// The longest model name `sessions.create` takes. The host records the
+/// name in the session's log as it is given.
+pub const MAX_MODEL_NAME: usize = 128;
 
 fn caller(manifest: Option<&Manifest>) -> Caller {
     match manifest {
@@ -42,8 +51,33 @@ fn done(result: Result<(), HostError>) -> Result<Reply, WireError> {
 impl EngineAgents {
     /// Serve `host`, whose log is `store`. Call [`Host::recover`] before
     /// the broker serves.
-    pub fn new(host: Host, store: Arc<dyn SessionStore>) -> Self {
-        Self { host, store }
+    pub fn new(host: Host, store: Arc<dyn SessionStore>, gateway: Option<Arc<Gateway>>) -> Self {
+        Self {
+            host,
+            store,
+            gateway,
+        }
+    }
+
+    /// The model a session is created with: trimmed and bounded, then
+    /// checked with the rule `models.stream` applies. Blank means the
+    /// preset's own model.
+    fn session_model(
+        &self,
+        manifest: Option<&Manifest>,
+        named: Option<String>,
+    ) -> Result<Option<String>, WireError> {
+        let Some(name) = named.as_deref().map(str::trim).filter(|n| !n.is_empty()) else {
+            return Ok(None);
+        };
+        if name.chars().count() > MAX_MODEL_NAME {
+            let message = format!("a model name is at most {MAX_MODEL_NAME} characters");
+            return Err(WireError::new(ErrorCode::BadRequest, message));
+        }
+        match &self.gateway {
+            Some(gateway) => gateway.check_session_model(manifest, name).map(Some),
+            None => Ok(Some(name.to_string())),
+        }
     }
 
     pub fn host(&self) -> &Host {
@@ -70,7 +104,12 @@ impl EngineAgents {
         }
     }
 
-    async fn reply(&self, who: &Caller, call: Call) -> Result<AgentsAnswer, WireError> {
+    async fn reply(
+        &self,
+        manifest: Option<&Manifest>,
+        call: Call,
+    ) -> Result<AgentsAnswer, WireError> {
+        let who = &caller(manifest);
         let host = &self.host;
         let err = convert::error;
         let reply = match call {
@@ -79,6 +118,7 @@ impl EngineAgents {
                     title: c.title,
                     location_opt_in: c.location_opt_in,
                     limits: None,
+                    model: self.session_model(manifest, c.model)?,
                 };
                 let session = host
                     .create_session(who, &c.preset, opts)
@@ -218,7 +258,7 @@ impl broker::Agents for EngineAgents {
         manifest: Option<&'a Manifest>,
         call: Call,
     ) -> BoxFuture<'a, Result<AgentsAnswer, WireError>> {
-        Box::pin(async move { self.reply(&caller(manifest), call).await })
+        Box::pin(async move { self.reply(manifest, call).await })
     }
 }
 

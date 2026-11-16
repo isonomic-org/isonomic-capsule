@@ -15,6 +15,7 @@ use harness_core::{ErrorInfo, Usage};
 use harness_host::{CancelToken, ModelCaps, ModelClient};
 use harness_log::{ModelEvent, ModelRequest, ModelStop, Part, Role as LogRole};
 use isonomic_inference_core::Capability;
+use isonomic_model_library::ModelEntry;
 use isonomic_proto::auth::Caller;
 use isonomic_proto::models::{Message, Role, StreamRequest};
 use tokio::sync::mpsc;
@@ -29,14 +30,21 @@ impl GatewayModel {
     }
 
     /// The catalogue id a preset's model name stands for.
-    fn resolve(&self, model: &str) -> Option<String> {
+    /// The catalogue id a model name stands for. An alias with no installed
+    /// model answers `Ok(None)` (the gateway then says none is installed);
+    /// a name the catalogue does not know, which a person may have picked,
+    /// is an error rather than a silent fall back to another model.
+    fn resolve(&self, model: &str) -> Result<Option<String>, String> {
         let catalogue = self.gateway.catalogue();
-        let entry = match model.strip_prefix("local:").unwrap_or(model) {
-            "default" => catalogue.default_for(Capability::Chat),
-            "smallest" => catalogue.smallest(Capability::Chat),
-            id => catalogue.get(id),
-        };
-        entry.map(|e| e.meta.id.as_str().to_string())
+        let id = |e: &ModelEntry| e.meta.id.as_str().to_string();
+        match model.trim().strip_prefix("local:").unwrap_or(model.trim()) {
+            "default" => Ok(catalogue.default_for(Capability::Chat).map(id)),
+            "smallest" => Ok(catalogue.smallest(Capability::Chat).map(id)),
+            name => catalogue
+                .get(name)
+                .map(|e| Some(id(e)))
+                .ok_or_else(|| name.to_string()),
+        }
     }
 }
 
@@ -120,6 +128,8 @@ impl ModelClient for GatewayModel {
     fn caps(&self, model: &str) -> ModelCaps {
         let context = self
             .resolve(model)
+            .ok()
+            .flatten()
             .and_then(|id| self.gateway.catalogue().get(&id).cloned())
             .and_then(|e| e.meta.context_length)
             .unwrap_or(4096);
@@ -139,8 +149,17 @@ impl ModelClient for GatewayModel {
         cancel: CancelToken,
     ) -> BoxStream<'static, Result<ModelEvent, ErrorInfo>> {
         let gateway = Arc::clone(&self.gateway);
-        let request = request(self.resolve(&req.model), &req);
         let (tx, rx) = mpsc::channel(64);
+        let model = match self.resolve(&req.model) {
+            Ok(model) => model,
+            Err(name) => {
+                // The turn fails with a reason a person can read.
+                let message = format!("The model {name} is not available on this computer.");
+                let _ = tx.try_send(Err(ErrorInfo::new("unknown_model", message)));
+                return Box::pin(Events(rx));
+            }
+        };
+        let request = request(model, &req);
         tokio::spawn(async move {
             let opened = gateway.chat(Caller::Shell, request).await;
             let mut stream = match opened {

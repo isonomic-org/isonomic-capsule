@@ -12,6 +12,14 @@ Newest first. This file is the engine's status from now on. The history of each 
 
 New entries go at the top of this file, naming the area; older ones move to their area's file when this one nears 20 KB. The spec stays in `isonomic-desktop/docs/architecture/`.
 
+## 2026-11-16 · Gateway and agents: the model picker (isonomic-sdk #30, harness #41)
+
+- `models.list` and `models.info` mark the model `models.recommended` names for this machine (`ModelInfo.recommended`).
+- `sessions.create` takes a `model`: trimmed, at most 128 characters (`agents::MAX_MODEL_NAME`), blank means the preset's own, then checked with the `models.stream` rule (`unknown_model`, `model_unavailable`, `unsupported`, and `capability_denied` from `proto::auth`), and passed to the host's create-time override.
+- A model name the gateway does not know fails the turn with a reason ("The model … is not available on this computer.") rather than falling back to another model.
+- Chat preset version 2 with no engine tools offered: the persona takes the most likely reading instead of asking, and the tools paragraph is gone. Measured against llama.cpp `b12387` with this exact prompt, 24 replies each: Qwen3.5 0.8B refused or asked to clarify 1 in 24 (about 1 in 6 before) but still invented places in most replies; Qwen3.5 2B refused none and named real Lisbon places in all 24.
+- Not yet: `SessionSummary.model` to the wire, waiting for the SDK commit that carries it.
+
 ## 2026-11-15 · Engine core: the memory gate reads macOS as macOS counts memory
 
 - Found on the 16 GB Intel Mac in ordinary use: the gate refused Qwen3.5 2B and even the 0.5 GB model, twice in four runs. It read 1.0 to 1.6 GB available while the Mac had about 160 MB free but 5.5 GB of inactive pages, which macOS hands out on demand, and its pressure was normal. On top of that it added a fixed 2 GB headroom, more than the models themselves.

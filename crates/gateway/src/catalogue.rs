@@ -103,7 +103,9 @@ fn file_size(path: &Path) -> Option<u64> {
     std::fs::metadata(path).ok().map(|m| m.len())
 }
 
-pub fn info(entry: &ModelEntry) -> ModelInfo {
+/// A model as listed. `recommended` marks the one `models.recommended`
+/// names for this machine, for the model picker.
+pub fn info(entry: &ModelEntry, recommended: bool) -> ModelInfo {
     let meta = &entry.meta;
     ModelInfo {
         id: meta.id.as_str().to_string(),
@@ -115,12 +117,13 @@ pub fn info(entry: &ModelEntry) -> ModelInfo {
             .map(|c| c.as_str().to_string())
             .collect(),
         remote: false,
+        recommended,
     }
 }
 
-pub fn detail(entry: &ModelEntry, state: ModelState) -> ModelDetail {
+pub fn detail(entry: &ModelEntry, state: ModelState, recommended: bool) -> ModelDetail {
     ModelDetail {
-        info: info(entry),
+        info: info(entry, recommended),
         size_bytes: Some(entry.meta.size_bytes),
         license: Some(entry.meta.license.name.clone()),
         state,

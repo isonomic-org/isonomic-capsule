@@ -6,6 +6,7 @@ edition.workspace = true
 publish.workspace = true
 
 [dependencies]
+isonomic-model-library.workspace = true
 broker.workspace = true
 futures-util.workspace = true
 gateway.workspace = true

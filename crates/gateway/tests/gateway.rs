@@ -192,6 +192,31 @@ async fn the_list_is_installed_models_the_app_may_use() {
         .collect();
     assert_eq!(listed, ["chat-small"]);
     let all = rig.shell.models().list().await.unwrap();
+    // The picker's mark: the model `models.recommended` names, and only it.
+    let marked: Vec<_> = all
+        .iter()
+        .filter(|m| m.recommended)
+        .map(|m| m.id.as_str())
+        .collect();
+    assert_eq!(marked, ["chat-big"]);
+    assert!(
+        rig.shell
+            .models()
+            .info("chat-big")
+            .await
+            .unwrap()
+            .info
+            .recommended
+    );
+    assert!(
+        !rig.shell
+            .models()
+            .info("chat-small")
+            .await
+            .unwrap()
+            .info
+            .recommended
+    );
     assert_eq!(all.len(), 3);
     assert_eq!(
         code(chat.models().stream(hello(Some("chat-big"))).await),
