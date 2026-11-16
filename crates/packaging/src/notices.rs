@@ -20,12 +20,21 @@ licence. Each licence asks that its copyright notice and licence text come with 
 copy, so they are reproduced here in full.\n";
 
 /// The notice for every installed program the manifest bundles, and the
-/// names of bundled programs with no licence text installed yet.
+/// names of installed programs with no licence text: a release build must
+/// not go out with any (`fetch-sidecars` fails). A program installed for no
+/// target is not in this build, and is not named.
 pub fn notice(root: &Path, manifest: &Manifest) -> (String, Vec<String>) {
     let mut text = String::from(OPENING);
     let mut missing = Vec::new();
     for sidecar in &manifest.sidecars {
-        if sidecar.is_deferred() || sidecar.is_draft() || sidecar.license_files.is_none() {
+        if sidecar.is_deferred() || sidecar.is_draft() {
+            continue;
+        }
+        let installed = sidecar
+            .targets
+            .keys()
+            .any(|triple| destination(root, manifest, &sidecar.name, triple).is_dir());
+        if !installed {
             continue;
         }
         let found = sidecar.targets.keys().find_map(|triple| {
