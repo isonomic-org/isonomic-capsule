@@ -14,6 +14,8 @@ broker.workspace = true
 capsule-core.workspace = true
 packaging.workspace = true
 registry.workspace = true
+reports.workspace = true
+serde_json.workspace = true
 supervisor.workspace = true
 tokio.workspace = true
 
