@@ -105,11 +105,15 @@ impl EngineAgents {
     /// holds: an app cannot reach a model through a preset it stored.
     /// Built-in presets are the engine's choice and are not checked, nor
     /// are the engine's own choices `local:default` and `local:smallest`.
+    ///
+    /// Every model the preset names is checked: its reply model, unless the
+    /// session names its own, and its title model, which runs either way.
     async fn check_preset_model(
         &self,
         manifest: Option<&Manifest>,
         who: &Caller,
         preset: &harness_core::PresetId,
+        reply_overridden: bool,
     ) -> Result<(), WireError> {
         if manifest.is_none() {
             return Ok(());
@@ -121,12 +125,15 @@ impl EngineAgents {
         let (Some(_), Some(parsed)) = (&stored.owner, &stored.preset) else {
             return Ok(());
         };
-        let id = parsed.model.id.as_str();
-        let id = id.strip_prefix("local:").unwrap_or(id);
-        if matches!(id, "default" | "smallest") {
-            return Ok(());
+        let reply = (!reply_overridden).then_some(parsed.model.id.as_str());
+        let title = parsed.model.title_model.as_deref();
+        for named in reply.into_iter().chain(title) {
+            let id = named.strip_prefix("local:").unwrap_or(named);
+            if !matches!(id, "default" | "smallest") {
+                self.check_model(manifest, id)?;
+            }
         }
-        self.check_model(manifest, id).map(|_| ())
+        Ok(())
     }
 
     pub fn host(&self) -> &Host {
@@ -163,9 +170,9 @@ impl EngineAgents {
         let err = convert::error;
         let reply = match call {
             Call::SessionsCreate(c) => {
-                if c.model.is_none() {
-                    self.check_preset_model(manifest, who, &c.preset).await?;
-                }
+                let overridden = c.model.is_some();
+                self.check_preset_model(manifest, who, &c.preset, overridden)
+                    .await?;
                 let opts = CreateOptions {
                     title: c.title,
                     location_opt_in: c.location_opt_in,

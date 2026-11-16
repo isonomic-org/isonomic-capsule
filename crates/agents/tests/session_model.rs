@@ -44,6 +44,7 @@ struct Rig {
     _dir: tempfile::TempDir,
     server: FakeModelServer,
     chat: AppClient,
+    shell: Client,
 }
 
 /// The engine, with the create-time model check on (`check`) or off.
@@ -128,6 +129,7 @@ async fn rig(check: bool) -> Rig {
         _dir: dir,
         server,
         chat,
+        shell,
     }
 }
 
@@ -237,4 +239,86 @@ async fn a_name_that_slips_through_fails_its_turn_with_a_reason() {
         .server
         .requests_to("POST /v1/chat/completions")
         .is_empty());
+}
+
+/// A preset the app stores, replying on `model` with titles on `title`.
+fn stored_preset(id: &str, model: &str, title: &str) -> String {
+    format!(
+        "id = \"{id}\"\nversion = 1\nname = \"Stored\"\nclass = \"interactive\"\n\n\
+         [persona]\nprompt = \"Be brief.\"\n\n\
+         [model]\nid = \"{model}\"\nmax_output_tokens = 256\nreasoning = \"off\"\n\
+         title_model = \"{title}\"\n\n\
+         [limits]\ntokens = 20000\nsteps = 8\nwall_ms = 60000\n"
+    )
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn every_model_an_apps_own_preset_names_follows_its_manifest() {
+    let rig = rig(true).await;
+    let manifest = isonomic_proto::Manifest {
+        id: "com.isonomic.notes".into(),
+        name: "Notes".into(),
+        version: "0.1.0".into(),
+        icon: "sparkle".into(),
+        capabilities: Capabilities {
+            agents: Some(AgentsAccess {}),
+            models: Some(ModelAccess {
+                ids: vec!["chat-default".into()],
+                ..Default::default()
+            }),
+            ..Default::default()
+        },
+        schemas: vec![],
+    };
+    let notes = rig.shell.scoped(rig.shell.grant(manifest).await.unwrap());
+    let agents = notes.agents();
+    let put = |id: &'static str, model: &'static str, title: &'static str| {
+        let agents = notes.agents();
+        async move {
+            agents
+                .put_preset(&stored_preset(id, model, title))
+                .await
+                .unwrap()
+        }
+    };
+
+    // Its title model is one the app may not use: refused, before any
+    // lookup, whether or not the session names an allowed reply model.
+    let titled = put("titled", "chat-default", "chat-small").await;
+    let titled = titled.id.to_string();
+    assert_eq!(
+        code(agents.create(&titled).await),
+        ErrorCode::CapabilityDenied
+    );
+    let named = CreateSession {
+        preset: titled.as_str().into(),
+        title: None,
+        location_opt_in: false,
+        model: Some("chat-default".into()),
+    };
+    assert_eq!(
+        code(agents.create_with(named).await),
+        ErrorCode::CapabilityDenied
+    );
+    // A title model the app may not know of at all says no more than that.
+    let ghost = put("ghost", "chat-default", "no-such-model")
+        .await
+        .id
+        .to_string();
+    assert_eq!(
+        code(agents.create(&ghost).await),
+        ErrorCode::CapabilityDenied
+    );
+
+    // The engine's own choices and allowed models pass.
+    let allowed = put("allowed", "local:default", "chat-default")
+        .await
+        .id
+        .to_string();
+    agents.create(&allowed).await.unwrap();
+    let own = put("own", "chat-default", "local:smallest")
+        .await
+        .id
+        .to_string();
+    agents.create(&own).await.unwrap();
 }
