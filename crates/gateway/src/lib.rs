@@ -10,6 +10,7 @@
 //! Remote models are not served: V1 is local only.
 
 mod catalogue;
+mod chat_worker;
 mod downloads;
 mod service;
 
@@ -26,11 +27,7 @@ use isonomic_proto::{ErrorCode, MemoryRefusal, WireError};
 use isonomic_provider::{ChatStream, GatewayError, InferenceProvider, LocalLlama};
 
 pub use catalogue::{Catalogue, SLOW_CHAT_MODEL};
-
-/// The chat workers' default sampling.
-pub const CHAT_SAMPLING: &[&str] = &[
-    "--temp", "0.7", "--top-p", "0.8", "--top-k", "20", "--min-p", "0",
-];
+pub use chat_worker::{CHAT_SAMPLING, CHAT_SLOTS, SLOT_CONTEXT};
 
 /// No local model runs on less memory than this: 16 GiB.
 pub const MEMORY_FLOOR: u64 = 16 << 30;
@@ -206,12 +203,7 @@ impl Gateway {
         let mut config = LlamaConfig::new(server.clone(), self.catalogue.path(entry));
         config.mode = mode;
         if mode == ServerMode::Chat {
-            // The server's sampling defaults, set to what the Qwen3.5 model
-            // cards recommend without thinking; a request's own
-            // temperature still wins.
-            config
-                .extra_args
-                .extend(CHAT_SAMPLING.iter().map(|a| a.to_string()));
+            chat_worker::configure(&mut config, entry, self.catalogue.dir());
         }
         (self.configure)(&mut config);
         let gate = Arc::new(Gate(Arc::clone(&self.gate)));

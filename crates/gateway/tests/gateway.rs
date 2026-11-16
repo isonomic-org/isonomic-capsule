@@ -18,7 +18,8 @@ use isonomic_proto::models::{Message, ModelState, StopReason, StreamRequest};
 use isonomic_proto::{Capabilities, ErrorCode};
 use registry::GrantStore;
 
-const SLEEPER: &str = "#!/bin/sh\nexec /bin/sleep 3600\n";
+/// Records its arguments beside itself, then waits like a server.
+const SLEEPER: &str = "#!/bin/sh\necho \"$@\" >> \"$0.args\"\nexec /bin/sleep 3600\n";
 
 fn catalogue_json() -> String {
     let hash = "0".repeat(64);
@@ -58,6 +59,7 @@ struct Rig {
     server: FakeModelServer,
     shell: Client,
     gate: Arc<Gate>,
+    program: std::path::PathBuf,
 }
 
 fn write(dir: &Path, name: &str, size: usize) {
@@ -77,13 +79,12 @@ async fn rig(slow: bool) -> Rig {
     let program = write_script(dir.path(), "stand-in", SLEEPER);
     let gate = Arc::new(Gate(AtomicU64::new(1 << 30)));
     let manifest = Manifest::from_json(&catalogue_json()).unwrap();
-    let gateway = Gateway::new(manifest, models, Some(program), gate.clone(), slow).with_configure(
-        Box::new(move |config| {
+    let gateway = Gateway::new(manifest, models, Some(program.clone()), gate.clone(), slow)
+        .with_configure(Box::new(move |config| {
             config.port = Some(port);
             config.idle_unload = None;
             config.probe_interval = Duration::from_millis(20);
-        }),
-    );
+        }));
     let services = Services {
         apps: Arc::new(Apps::new(
             GrantStore::in_memory().unwrap(),
@@ -110,6 +111,7 @@ async fn rig(slow: bool) -> Rig {
         server,
         shell,
         gate,
+        program,
     }
 }
 
@@ -314,4 +316,24 @@ async fn only_the_opener_cancels_and_the_stream_ends_cancelled() {
     }
     assert_eq!(stops, [StopReason::Cancelled]);
     rig.server.release_stream();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_chat_worker_has_a_slot_for_titles_and_keeps_each_slots_context() {
+    let rig = rig(false).await;
+    let chat = app(&rig, &[]).await;
+    chat.models().stream(hello(None)).await.unwrap();
+    let file = rig.program.with_extension("args");
+    // The worker writes it as it starts; a limit, not a wait for a policy.
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    while !file.exists() && std::time::Instant::now() < deadline {
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    let args = std::fs::read_to_string(&file).unwrap();
+    let args: Vec<&str> = args.split_whitespace().collect();
+    let after = |flag: &str| args.iter().position(|a| *a == flag).map(|i| args[i + 1]);
+    assert_eq!(after("-np"), Some("2"), "{args:?}");
+    assert_eq!(after("-c"), Some("16384"), "{args:?}");
+    // Not a Qwen3.5 model: its own chat template.
+    assert_eq!(after("--chat-template-file"), None);
 }
