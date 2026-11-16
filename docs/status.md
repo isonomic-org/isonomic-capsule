@@ -19,6 +19,16 @@ Newest first. This file is the engine's status from now on. The history of each 
 
 New entries go at the top of this file, naming the area; older ones move to their area's file when this one nears 20 KB. The spec stays in `isonomic-desktop/docs/architecture/`.
 
+## 2026-11-16 · Supervisor: nothing a service runs outlives the engine
+
+- **A guardian beside every supervised service** (the database, the cache, and the lazy tier's services), approved by the orchestrator under rule 10.
+  - It is a small shell reading a pipe that only the engine holds. The kernel closes the pipe when the engine dies, however it dies. The guardian then stops the service as a deliberate stop would: the service's own stop signal first (SIGINT for the database, its fast shutdown with a clean checkpoint), and a hard kill once the stop grace has passed.
+  - A deliberate stop never wakes it. The monitor disarms a child's guardian once it reaps that child, and disarming kills the shell before the pipe closes. So a guardian never signals a process group whose number may be reused.
+  - This is the same design as the model server's guardian in isonomic-inference.
+- **Measured on a real PostgreSQL** with the first engine a child killed by SIGKILL: its database stopped 1.2 s later, cleanly (no `postmaster.pid` left, so no crash recovery on the next start), and the next engine started its own.
+- **Reaping stays as the backstop** for a guardian that died too. Both reaping tests now kill the guardian first, found by the process group in its arguments, never by name.
+- Tests: three for the guardian (stopped with the stop signal, killed after the grace when the signal is ignored, disarming leaves the service alone), and the three real-database cases in `crates/supervisor/tests/orphan_database.rs` (opt-in).
+
 ## 2026-11-16 · Gateway: a model stays loaded for its profile's idle time
 
 - A local model's worker is unloaded after the profile's idle time (`Profile::model_idle_unload`): 5 min on low, 15 min on standard, never on high. Before this, every profile used the inference supervisor's default, 5 min. On the 16 GB Intel Mac (standard), a reader who answered after 5 minutes paid a cold load (about 5 s there) and a full re-read of the conversation. The test covers each profile and the default.

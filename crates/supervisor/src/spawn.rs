@@ -168,6 +168,15 @@ pub(crate) fn spawn_child(shared: &Arc<Shared>, addr: &Endpoint) -> std::io::Res
     let mut child = cmd.spawn()?;
     let pid = child.id().unwrap_or(0);
     crate::orphan::record(config, pid);
+    // Replacing an earlier child's guardian stands it down.
+    let guardian = crate::guardian::Guardian::watch(pid, config.stop_signal, config.stop_grace);
+    match guardian {
+        Ok(guardian) => *shared.guardian.lock().unwrap_or_else(|p| p.into_inner()) = Some(guardian),
+        Err(error) => shared.logs.append(&format!(
+            "no guardian for {} (pid {pid}): {error}",
+            config.name
+        )),
+    }
     if let Some(stdout) = child.stdout.take() {
         spawn_log_pump(Arc::clone(&shared.logs), stdout, "stdout");
     }

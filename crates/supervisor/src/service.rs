@@ -173,6 +173,20 @@ pub(crate) struct Shared {
     pub(crate) stopping: AtomicBool,
     pub(crate) generation: AtomicU64,
     pub(crate) pgid: AtomicU32,
+    /// The running child's guardian (`guardian`): it stops the child if
+    /// the engine dies without doing so itself.
+    pub(crate) guardian: std::sync::Mutex<Option<crate::guardian::Guardian>>,
+}
+
+impl Shared {
+    /// The child in process group `pgid` was reaped: its guardian stands
+    /// down, without signalling a group whose number may come back.
+    pub(crate) fn stand_down(&self, pgid: u32) {
+        let mut guardian = self.guardian.lock().unwrap_or_else(|p| p.into_inner());
+        if guardian.as_ref().is_some_and(|g| g.pgid == pgid) {
+            *guardian = None;
+        }
+    }
 }
 
 impl Shared {
@@ -239,6 +253,7 @@ impl ServiceSupervisor {
                 stopping: AtomicBool::new(false),
                 generation: AtomicU64::new(0),
                 pgid: AtomicU32::new(0),
+                guardian: std::sync::Mutex::new(None),
             }),
             control: Arc::new(Mutex::new(ControlState {
                 pid: None,
