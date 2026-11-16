@@ -1,6 +1,7 @@
 {
   "version": 1,
   "outDir": "sidecars",
+  "minimumMacos": "13.3",
   "sidecars": [
     {
       "name": "caddy",
@@ -46,6 +47,9 @@
       "name": "llama-server",
       "version": "b12387",
       "license": "MIT",
+      "licenseFiles": [
+        "LICENSE"
+      ],
       "install": "directory",
       "binaryInDir": "llama-server",
       "targets": {
@@ -67,6 +71,11 @@
       "name": "valkey",
       "version": "9.1.1",
       "license": "BSD-3-Clause",
+      "licenseFiles": [
+        "COPYING",
+        "LICENSE",
+        "LICENSE.md"
+      ],
       "build": {
         "command": "make",
         "args": [
@@ -74,8 +83,9 @@
           "valkey-server"
         ],
         "env": {
-          "CFLAGS": "-arch {arch}",
-          "LDFLAGS": "-arch {arch}"
+          "CFLAGS": "-arch {arch} -mmacosx-version-min=13.3",
+          "LDFLAGS": "-arch {arch} -mmacosx-version-min=13.3",
+          "MACOSX_DEPLOYMENT_TARGET": "13.3"
         },
         "producesPath": "src/valkey-server"
       },
@@ -124,6 +134,9 @@
       "name": "postgres",
       "version": "18.4.0",
       "license": "PostgreSQL",
+      "licenseFiles": [
+        "COPYRIGHT"
+      ],
       "install": "directory",
       "binaryInDir": "bin/postgres",
       "keepInBin": [
@@ -132,16 +145,32 @@
       ],
       "targets": {
         "aarch64-apple-darwin": {
-          "url": "https://github.com/theseus-rs/postgresql-binaries/releases/download/18.4.0/postgresql-18.4.0-aarch64-apple-darwin.tar.gz",
-          "sha256": "1b68828f524b638a24918e258b173d0f16773547a0d3b83d9ba74473b61649f2",
+          "url": "https://ftp.postgresql.org/pub/source/v18.4/postgresql-18.4.tar.gz",
+          "sha256": "450aa8f2da06c46f8221916e82ae06b04fb1040f8f00643dbf8b7d663caac0b9",
           "archive": "tar.gz",
-          "pathInArchive": "postgresql-18.4.0-aarch64-apple-darwin"
+          "pathInArchive": "postgresql-18.4",
+          "build": {
+            "command": "/bin/sh",
+            "args": [
+              "-c",
+              "set -eu; case \"{arch}\" in arm64) host=aarch64-apple-darwin ;; *) host=x86_64-apple-darwin ;; esac; P=\"$PWD/isonomic-postgres\"; export MACOSX_DEPLOYMENT_TARGET=13.3; ./configure --prefix=\"$P\" --host=\"$host\" --without-icu --without-readline --with-system-tzdata=/usr/share/zoneinfo CC=\"clang -arch {arch}\" CFLAGS=\"-O2 -mmacosx-version-min=13.3\" LDFLAGS=\"-mmacosx-version-min=13.3\"; make -j4; make install; find \"$P/bin\" \"$P/lib\" -type f | while IFS= read -r f; do file \"$f\" | grep -q Mach-O || continue; case \"$f\" in \"$P\"/bin/*) rel=../lib ;; \"$P\"/lib/*/*) rel=.. ;; *) rel=. ;; esac; otool -L \"$f\" | awk 'NR>1 {print $1}' | grep \"^$P/lib/\" | while IFS= read -r dep; do install_name_tool -change \"$dep\" \"@loader_path/$rel/${dep##*/}\" \"$f\"; done; case \"$f\" in *.dylib) install_name_tool -id \"@loader_path/${f##*/}\" \"$f\" ;; esac; codesign -f -s - \"$f\"; done"
+            ],
+            "producesPath": "isonomic-postgres"
+          }
         },
         "x86_64-apple-darwin": {
-          "url": "https://github.com/theseus-rs/postgresql-binaries/releases/download/18.4.0/postgresql-18.4.0-x86_64-apple-darwin.tar.gz",
-          "sha256": "cbc38067a795d10bbddc730e61c835df0b351c36a7bd2544d388790fcf50aa4d",
+          "url": "https://ftp.postgresql.org/pub/source/v18.4/postgresql-18.4.tar.gz",
+          "sha256": "450aa8f2da06c46f8221916e82ae06b04fb1040f8f00643dbf8b7d663caac0b9",
           "archive": "tar.gz",
-          "pathInArchive": "postgresql-18.4.0-x86_64-apple-darwin"
+          "pathInArchive": "postgresql-18.4",
+          "build": {
+            "command": "/bin/sh",
+            "args": [
+              "-c",
+              "set -eu; case \"{arch}\" in arm64) host=aarch64-apple-darwin ;; *) host=x86_64-apple-darwin ;; esac; P=\"$PWD/isonomic-postgres\"; export MACOSX_DEPLOYMENT_TARGET=13.3; ./configure --prefix=\"$P\" --host=\"$host\" --without-icu --without-readline --with-system-tzdata=/usr/share/zoneinfo CC=\"clang -arch {arch}\" CFLAGS=\"-O2 -mmacosx-version-min=13.3\" LDFLAGS=\"-mmacosx-version-min=13.3\"; make -j4; make install; find \"$P/bin\" \"$P/lib\" -type f | while IFS= read -r f; do file \"$f\" | grep -q Mach-O || continue; case \"$f\" in \"$P\"/bin/*) rel=../lib ;; \"$P\"/lib/*/*) rel=.. ;; *) rel=. ;; esac; otool -L \"$f\" | awk 'NR>1 {print $1}' | grep \"^$P/lib/\" | while IFS= read -r dep; do install_name_tool -change \"$dep\" \"@loader_path/$rel/${dep##*/}\" \"$f\"; done; case \"$f\" in *.dylib) install_name_tool -id \"@loader_path/${f##*/}\" \"$f\" ;; esac; codesign -f -s - \"$f\"; done"
+            ],
+            "producesPath": "isonomic-postgres"
+          }
         },
         "x86_64-unknown-linux-gnu": {
           "url": "https://github.com/theseus-rs/postgresql-binaries/releases/download/18.4.0/postgresql-18.4.0-x86_64-unknown-linux-gnu.tar.gz",
@@ -150,7 +179,7 @@
           "pathInArchive": "postgresql-18.4.0-x86_64-unknown-linux-gnu"
         }
       },
-      "$note": "A distribution tree, not one binary: the server needs its bin, lib and share siblings. Both Apple hashes were confirmed against the vendor's published .sha256 files. Only the two programs the engine runs are kept from bin."
+      "$note": "A distribution tree, not one binary: the server needs its bin, lib and share siblings. On the Mac it is built from the official 18.4 source (hash checked against the project's published .sha256) for macOS 13.3, with only what the engine uses: no ICU, readline, OpenSSL or XML, so it links only the system's libraries. Install names are rewritten relative to each file and the files signed ad hoc, as the tree moves into the app. Needs the developer tools (clang, bison, flex, perl). The Linux tree is the prebuilt download. Only the two programs the engine runs are kept from bin."
     }
   ],
   "$note": "Pinned downloads of the services the engine runs. Binaries are never committed: `cargo xtask fetch-sidecars` downloads them and verifies each against the sha256 here. An entry marked draft is declared but not yet pinned; one marked deferred is pinned but not bundled until its milestone. Everything else fails closed.",
