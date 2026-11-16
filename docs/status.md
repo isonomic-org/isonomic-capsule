@@ -23,6 +23,11 @@ New entries go at the top of this file, naming the area; older ones move to thei
 
 - A local model's worker is unloaded after the profile's idle time (`Profile::model_idle_unload`): 5 min on low, 15 min on standard, never on high. Before this, every profile used the inference supervisor's default, 5 min. On the 16 GB Intel Mac (standard), a reader who answered after 5 minutes paid a cold load (about 5 s there) and a full re-read of the conversation. The test covers each profile and the default.
 - The reader's pass over the docs (Worker reports): deferrals since done are marked so in their area files; the known limitations of version 1 are listed above.
+- **A database left by an engine killed outright is stopped before the next one starts.** The Intel Mac showed it: after `kill -9` of the engine, the model server was gone (its guardian), but PostgreSQL and the cache kept running until the next start.
+  - Reaping (#23) already stopped them, by the engine's pid files in the run directory.
+  - If the run directory had been cleaned meanwhile, the next engine missed the old database. Its own server could not start on the locked data directory, and its readiness probe answered from the old server's socket. Checked here: the new engine "started" against a server it did not own.
+  - Now the service's own pid file (PostgreSQL's `postmaster.pid`) is read when the engine's is gone.
+  - Tested on a real PostgreSQL with a real orphan: the first engine is a child process killed with SIGKILL, in both cases (`crates/supervisor/tests/orphan_database.rs`, opt-in).
 
 ## 2026-11-16 · Engine core: a Capsule made by one build opens in the next
 

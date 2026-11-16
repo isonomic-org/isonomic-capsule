@@ -433,6 +433,27 @@ async fn a_service_left_running_by_an_earlier_engine_is_stopped_first() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn with_its_pid_file_gone_a_left_service_is_found_by_its_own() {
+    let dir = tempfile::tempdir().unwrap();
+    let (addr, _server) = spawn_pong_server().await;
+    let program = stand_in(dir.path(), "postgres");
+    let old = earlier_engines(&program);
+    // The run directory was cleaned; the service's own file remains.
+    let own = dir.path().join("postmaster.pid");
+    std::fs::write(&own, format!("{old}\n/the/data/dir\n")).unwrap();
+    let mut config = stand_in_config(program, addr.port(), dir.path().join("run/postgres.pid"));
+    config.own_pid_file = Some(own);
+    let sup = ServiceSupervisor::new(config, None);
+    sup.start().await.unwrap();
+    assert!(
+        wait_until_gone(old, Duration::from_secs(5)).await,
+        "stopped first"
+    );
+    assert_ne!(sup.pid().await.unwrap(), old);
+    sup.stop().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn a_reused_pid_running_something_else_is_left_alone() {
     let dir = tempfile::tempdir().unwrap();
     let (addr, _server) = spawn_pong_server().await;

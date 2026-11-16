@@ -101,6 +101,11 @@ pub struct ServiceConfig {
     /// Where the running pid is noted, so the next engine can stop a service
     /// this one left behind (`orphan`). `None` keeps no record.
     pub pid_file: Option<PathBuf>,
+    /// A file the service writes itself whose first line is its pid
+    /// (PostgreSQL's `postmaster.pid`). Read when `pid_file` names nothing
+    /// alive, so a service is still found after the run directory was
+    /// cleaned.
+    pub own_pid_file: Option<PathBuf>,
 }
 
 impl ServiceConfig {
@@ -125,6 +130,7 @@ impl ServiceConfig {
             stop_signal: StopSignal::Term,
             stop_grace: DEFAULT_STOP_GRACE,
             pid_file: None,
+            own_pid_file: None,
         }
     }
 
