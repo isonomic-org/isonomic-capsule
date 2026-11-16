@@ -181,6 +181,17 @@ async fn run() -> Result<(), AnyError> {
     })
     .await
     .map_err(|e| format!("the agents host did not start: {e:?}"))?;
+    // The person's Isonomic ID, made from the computer's key store the first
+    // time the window asks for it, and the directory of accepted logs.
+    let person = identity::Person::new(
+        paths.root(),
+        &marker.capsule_id,
+        identity::system_backend(),
+        Arc::new(capsule_core::SystemClock),
+    );
+    for note in person.logs().notes() {
+        log(note);
+    }
     let services = broker::Services {
         apps,
         blobs: broker::Blobs::open(&paths.blobs_dir(), &paths.registry_db())
@@ -194,14 +205,7 @@ async fn run() -> Result<(), AnyError> {
         ))),
         agents: Arc::new(host),
         models: gateway,
-        // The person's Isonomic ID, made from the computer's key store the first
-        // time the window asks for it.
-        identity: Arc::new(identity::IdentityService::new(identity::Person::new(
-            paths.root(),
-            &marker.capsule_id,
-            identity::system_backend(),
-            Arc::new(capsule_core::SystemClock),
-        ))),
+        identity: Arc::new(identity::IdentityService::new(person)),
     };
     let server = tokio::spawn(broker::serve(listener, system.clone(), Arc::new(services)));
 
