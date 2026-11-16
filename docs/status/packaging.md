@@ -2,6 +2,11 @@
 
 Newest first.
 
+## 2026-11-15 · Packaging: the llama.cpp server ships
+
+- `llama-server` is no longer deferred in `sidecars.json`, so the app bundles it and the gateway finds it at `sidecars/llama-server-<triple>/llama-server`.
+- Pinned to llama.cpp `b12387`, the build isonomic-inference smoke-tested and benchmarked on the Intel Mac (the earlier pin, `b10331`, was never run against the models in the manifest). Hashes recorded from the release archives: arm64 `a654e602…`, x86_64 `624b91b4…`; 17 MB and 13 MB compressed. The whole directory ships (the server needs its `libggml*` and `libllama*` libraries beside it).
+
 ## 2026-11-15 · Every bundled service ships, and single programs are fused
 
 **Built** (`cargo xtask bundle`, with the engine's install shapes from capsule #14)

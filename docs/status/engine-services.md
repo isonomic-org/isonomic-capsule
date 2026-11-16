@@ -2,6 +2,17 @@
 
 Newest first.
 
+## 2026-11-15 · `appdb`: an app's schemas are made when it is granted
+
+- `apps.grant` now sets the app's role, schemas and read access up right away, in the background after the reply, so the reply never waits on the database and a grant still succeeds while it starts. The setup before an app's first statement stays as the backstop.
+- Checked with Chat's own manifest (`agents`, `sql`, schema `chat`): hermetically, the grant prepares it; on a real PostgreSQL 16, the `chat` schema exists owned by Chat's role, and Chat's `create table if not exists pins (… timestamptz …)`, insert and read work there.
+
+## 2026-11-15 · `appdb`: dropped read grants are revoked; every write wakes live queries
+
+- Re-granting an app whose manifest no longer lists a schema takes its read access back: usage, select on the tables there, and the default privilege for tables made later. Found from the role's own grants in the schema ACLs.
+- Live queries wake on every committed transaction that wrote, whichever method ran it (a write sent through `sql.query` included) and whichever engine part shares the database. The database decides: a transaction id is assigned only on a write. Reads wake nothing.
+- Both checked on the real server (`appdb`'s `real_database` test). The two deviations listed under R5 are closed.
+
 ## 2026-11-15 (later) · Quoted paths (isonomic-capsule PR #22)
 
 - **Bug:** with the default Capsule directory (under "Application Support") the cache refused its config: the space split its socket path into two arguments. Every earlier check had set a Capsule directory without a space. The cache's socket and directory are now quoted, and so are the vector database's storage paths. Paths containing a double quote or a backslash still aren't escaped.

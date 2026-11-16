@@ -27,7 +27,8 @@ impl RamGate for Open {
     }
 }
 
-/// Serves `body` for any GET. While `hold` is true it sends half and waits.
+/// Serves `body` for any GET, from a range's start if it names one. While
+/// `hold` is true it sends up to half and waits.
 async fn file_server(body: Vec<u8>, hold: watch::Receiver<bool>) -> u16 {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
@@ -47,13 +48,31 @@ async fn file_server(body: Vec<u8>, hold: watch::Receiver<bool>) -> u16 {
                         Ok(n) => request.extend_from_slice(&buf[..n]),
                     }
                 }
-                let head = format!(
-                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
-                    body.len()
-                );
-                let half = body.len() / 2;
+                // A range continues an earlier attempt.
+                let text = String::from_utf8_lossy(&request).to_lowercase();
+                let start = text
+                    .lines()
+                    .find_map(|l| l.strip_prefix("range: bytes="))
+                    .and_then(|r| r.trim().trim_end_matches('-').parse::<usize>().ok())
+                    .filter(|s| *s < body.len())
+                    .unwrap_or(0);
+                let head = if start == 0 {
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                        body.len()
+                    )
+                } else {
+                    format!(
+                        "HTTP/1.1 206 Partial Content\r\nContent-Length: {}\r\n\
+                         Content-Range: bytes {start}-{}/{}\r\nConnection: close\r\n\r\n",
+                        body.len() - start,
+                        body.len() - 1,
+                        body.len()
+                    )
+                };
+                let half = (body.len() / 2).max(start);
                 if socket.write_all(head.as_bytes()).await.is_err()
-                    || socket.write_all(&body[..half]).await.is_err()
+                    || socket.write_all(&body[start..half]).await.is_err()
                 {
                     return;
                 }
@@ -93,6 +112,12 @@ struct Rig {
 }
 
 async fn rig(total_memory_bytes: u64) -> Rig {
+    rig_on(total_memory_bytes, 1 << 40, |_| {}).await
+}
+
+/// The rig with `free` bytes on the disk, after `prepare` has seen the
+/// model directory.
+async fn rig_on(total_memory_bytes: u64, free: u64, prepare: impl FnOnce(&std::path::Path)) -> Rig {
     let dir = tempfile::tempdir().unwrap();
     let paths = CapsulePaths::new(dir.path());
     let body: Vec<u8> = (0..BODY).map(|i| (i % 251) as u8).collect();
@@ -105,7 +130,9 @@ async fn rig(total_memory_bytes: u64) -> Rig {
     let models = dir.path().join("models");
     std::fs::create_dir_all(&models).unwrap();
     std::fs::write(models.join("small.gguf"), [0u8; 16]).unwrap();
+    prepare(&models);
     let gateway = Gateway::new(manifest(&hash, BODY), models, None, Arc::new(Open), false)
+        .with_disk(Arc::new(gateway::FixedDisk(free)))
         .with_source(Box::new(move |entry| {
             let mut spec = entry.spec();
             spec.url = format!("http://127.0.0.1:{port}/{}", spec.file_name);
@@ -297,4 +324,56 @@ async fn the_first_model_follows_the_profile_and_the_memory_floor() {
 
 async fn rig_small() -> Rig {
     rig(8 << 30).await
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_download_without_room_on_disk_is_refused_in_plain_words() {
+    let rig = rig_on(16 << 30, BODY as u64 + gateway::DISK_HEADROOM - 1, |_| {}).await;
+    match rig.shell.models().download("big").await {
+        Err(ClientError::Engine(e)) => {
+            assert_eq!(e.code, ErrorCode::TooLarge);
+            assert!(
+                e.message
+                    .contains("not enough free disk space to download big"),
+                "{}",
+                e.message
+            );
+        }
+        Err(other) => panic!("{other:?}"),
+        Ok(_) => panic!("the download started without room for it"),
+    }
+    let models = rig.shell.models();
+    assert_eq!(
+        models.info("big").await.unwrap().state,
+        ModelState::NotInstalled
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_download_cut_off_by_a_quit_picks_up_its_part_and_installs_whole() {
+    let body: Vec<u8> = (0..BODY).map(|i| (i % 251) as u8).collect();
+    let half = body[..BODY / 2].to_vec();
+    // An earlier engine quit with half the file written. Only the bytes
+    // still missing need room on the disk.
+    let free = (BODY / 2) as u64 + gateway::DISK_HEADROOM;
+    let rig = rig_on(16 << 30, free, move |models| {
+        std::fs::write(models.join("big.gguf.part"), half).unwrap();
+    })
+    .await;
+    let models = rig.shell.models();
+    assert_eq!(
+        models.info("big").await.unwrap().state,
+        ModelState::NotInstalled
+    );
+    let mut stream = models.download("big").await.unwrap();
+    let first = next(&mut stream).await.unwrap();
+    assert!(first.received_bytes >= (BODY / 2) as u64, "{first:?}");
+    let done = last(&mut stream).await;
+    assert_eq!(
+        done.outcome,
+        Some(DownloadOutcome::Installed),
+        "{:?}",
+        done.error
+    );
+    assert_eq!(models.info("big").await.unwrap().state, ModelState::Stopped);
 }
