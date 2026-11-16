@@ -26,3 +26,6 @@ jobs:
       harness: true
       # The model gateway runs local models through isonomic-inference.
       inference: true
+      # The identity crate builds on the Isonomic ID library at ID_REF
+      # (read-only, through ID_DEPLOY_KEY).
+      id: true
