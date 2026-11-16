@@ -4,7 +4,8 @@
 //! - `file`: unpack and keep one program (or take the download itself when
 //!   the archive is `none`).
 //! - `build`: unpack the source, run the pinned command for this target, and
-//!   keep the program it produces. The build log is kept next to the cache,
+//!   keep what it produces: the program for a file install, the installed
+//!   tree for a directory install. The build log is kept next to the cache,
 //!   whether the build passes or not.
 //!
 //! The caller has already checked the hash; it stamps and architecture-checks
@@ -49,11 +50,71 @@ pub(crate) fn place(
     };
     let member = work.join(&wanted);
     let program = sidecar.program(target);
-
-    if sidecar.is_directory() {
-        return place_directory(sidecar, &member, &wanted, &program, dest, label);
+    let license = license_text(sidecar, &member, label)?;
+    place_shape(
+        sidecar, target, triple, label, work, &member, &wanted, &program, dest,
+    )?;
+    if let Some(text) = license {
+        std::fs::write(dest.join(crate::install::LICENSE), text)?;
     }
-    let produced = match &sidecar.build {
+    Ok(())
+}
+
+/// The licence the manifest names, read from the unpacked tree before it
+/// moves; `None` when the manifest names none or the download is bare.
+fn license_text(
+    sidecar: &Sidecar,
+    member: &Path,
+    label: &str,
+) -> Result<Option<String>, InstallError> {
+    let Some(names) = &sidecar.license_files else {
+        return Ok(None);
+    };
+    if !member.is_dir() {
+        return Ok(None);
+    }
+    for name in names {
+        if let Ok(text) = std::fs::read_to_string(member.join(name)) {
+            return Ok(Some(text));
+        }
+    }
+    let found = contents(member);
+    Err(InstallError::Archive(
+        label.to_string(),
+        format!("none of the licence files {names:?} is in the archive. It contains:\n  {found}"),
+    ))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn place_shape(
+    sidecar: &Sidecar,
+    target: &Target,
+    triple: &str,
+    label: &str,
+    work: &Path,
+    member: &Path,
+    wanted: &str,
+    program: &str,
+    dest: &Path,
+) -> Result<(), InstallError> {
+    let archive_error = |message: String| InstallError::Archive(label.to_string(), message);
+    let (member, program) = (member.to_path_buf(), program.to_string());
+
+    let build = sidecar.build_for(target);
+    let log = work.with_file_name(format!("{}-{triple}.build.log", sidecar.name));
+    if sidecar.is_directory() {
+        let tree = match &build {
+            Some(build) => build_from_source(build, &member, triple, &log, label)?,
+            None => member,
+        };
+        let shown = tree
+            .strip_prefix(work)
+            .unwrap_or(&tree)
+            .display()
+            .to_string();
+        return place_directory(sidecar, &tree, &shown, &program, dest, label);
+    }
+    let produced = match &build {
         Some(build) => {
             if !member.is_dir() {
                 let found = contents(work);
@@ -61,7 +122,6 @@ pub(crate) fn place(
                     "pathInArchive \"{wanted}\" is not the source directory. Archive contains:\n  {found}"
                 )));
             }
-            let log = work.with_file_name(format!("{}-{triple}.build.log", sidecar.name));
             build_from_source(build, &member, triple, &log, label)?
         }
         None => member,

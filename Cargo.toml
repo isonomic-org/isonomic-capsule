@@ -10,6 +10,7 @@ members = [
     "crates/agents",
     "crates/gateway",
     "crates/identity",
+    "crates/reports",
     "xtask",
     "bin/isonomic-capsule",
 ]
@@ -29,6 +30,7 @@ appdb = { path = "crates/appdb" }
 agents = { path = "crates/agents" }
 gateway = { path = "crates/gateway" }
 identity = { path = "crates/identity" }
+reports = { path = "crates/reports" }
 bytes = "1"
 flate2 = "1"
 serde = { version = "1", features = ["derive"] }
