@@ -32,6 +32,10 @@ pub struct Manifest {
     pub version: u32,
     /// Where artifacts are installed, relative to the repo root.
     pub out_dir: String,
+    /// The oldest macOS the product supports, `13.3`. No installed file
+    /// may say it needs a newer one (`minos`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub minimum_macos: Option<String>,
     pub sidecars: Vec<Sidecar>,
     /// Notes (`$`-prefixed keys) and anything else, kept on rewrite.
     #[serde(flatten)]
@@ -62,6 +66,11 @@ pub struct Sidecar {
     /// Compile from the downloaded source archive.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub build: Option<Value>,
+    /// The licence text in the archive or source tree, by the names it may
+    /// have (the first one present is kept). The bundle's notice is built
+    /// from it, since the app redistributes the program.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub license_files: Option<Vec<String>>,
     /// Keyed by target triple. Insertion order is preserved.
     pub targets: Map<String, Value>,
     #[serde(flatten)]
@@ -77,6 +86,10 @@ pub struct Target {
     pub archive: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path_in_archive: Option<String>,
+    /// This target's own build, in place of the sidecar's (one target built
+    /// from source while another is a prebuilt download).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub build: Option<Value>,
 }
 
 impl Sidecar {
@@ -90,6 +103,11 @@ impl Sidecar {
 
     pub fn is_directory(&self) -> bool {
         self.install.as_deref() == Some("directory")
+    }
+
+    /// The build for `target`: its own, else the sidecar's.
+    pub fn build_for(&self, target: &Target) -> Option<Value> {
+        target.build.clone().or_else(|| self.build.clone())
     }
 
     pub fn target(&self, triple: &str) -> Option<Target> {
@@ -110,8 +128,8 @@ impl Sidecar {
                 .file_name()
                 .map(|name| name.to_string_lossy().to_string())
         };
-        let produced = self
-            .build
+        let build = self.build_for(target);
+        let produced = build
             .as_ref()
             .and_then(|build| build.get("producesPath"))
             .and_then(Value::as_str);
@@ -171,6 +189,13 @@ impl Manifest {
     /// missing hash is allowed; a malformed one never is.
     pub fn validate(&self, require_hashes: bool) -> Result<(), ManifestError> {
         let fail = |message: String| Err(ManifestError::Invalid(message));
+        if let Some(minimum) = &self.minimum_macos {
+            if crate::minos::MacVersion::parse(minimum).is_none() {
+                return fail(format!(
+                    "minimumMacos must be a macOS version such as 13.3, got {minimum:?}"
+                ));
+            }
+        }
         if self.version != 1 {
             return fail(format!("unsupported manifest version: {}", self.version));
         }
@@ -218,32 +243,7 @@ impl Manifest {
                 ));
             }
             if let Some(build) = &sidecar.build {
-                let Some(build) = build.as_object() else {
-                    return fail(format!("{name}: build must be an object"));
-                };
-                if build
-                    .get("command")
-                    .and_then(Value::as_str)
-                    .unwrap_or("")
-                    .is_empty()
-                {
-                    return fail(format!("{name}: build.command is required"));
-                }
-                if build
-                    .get("producesPath")
-                    .and_then(Value::as_str)
-                    .unwrap_or("")
-                    .is_empty()
-                {
-                    return fail(format!(
-                        "{name}: build.producesPath is required - name the file the build emits"
-                    ));
-                }
-                if sidecar.is_directory() {
-                    return fail(format!(
-                        "{name}: build currently supports install \"file\" only"
-                    ));
-                }
+                check_build(name, build)?;
             }
             for required in APPLE_SLICES {
                 if !sidecar.targets.contains_key(required) {
@@ -276,7 +276,10 @@ impl Manifest {
                         "{place}: a bare download cannot be a directory install"
                     ));
                 }
-                if target.archive == "none" && sidecar.build.is_some() {
+                if let Some(build) = &target.build {
+                    check_build(&place, build)?;
+                }
+                if target.archive == "none" && sidecar.build_for(&target).is_some() {
                     return fail(format!(
                         "{place}: a bare download cannot be built from source"
                     ));
@@ -306,3 +309,23 @@ impl Manifest {
 #[cfg(test)]
 #[path = "manifest_tests.rs"]
 mod tests;
+
+/// A build is a command run in the source directory, and the path it leaves
+/// behind: the program for a file install, the installed tree for a
+/// directory install.
+fn check_build(place: &str, build: &Value) -> Result<(), ManifestError> {
+    let fail = |message: String| Err(ManifestError::Invalid(message));
+    let Some(build) = build.as_object() else {
+        return fail(format!("{place}: build must be an object"));
+    };
+    let text = |key: &str| build.get(key).and_then(Value::as_str).unwrap_or("");
+    if text("command").is_empty() {
+        return fail(format!("{place}: build.command is required"));
+    }
+    if text("producesPath").is_empty() {
+        return fail(format!(
+            "{place}: build.producesPath is required - name what the build leaves behind"
+        ));
+    }
+    Ok(())
+}

@@ -18,6 +18,10 @@ pub mod bundle;
 pub mod install;
 pub mod macho;
 pub mod manifest;
+#[cfg(test)]
+mod minimum_tests;
+pub mod minos;
+pub mod notices;
 pub mod place;
 
 pub use bundle::{host_triple, BinaryStatus, Bundle};
