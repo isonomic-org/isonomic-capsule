@@ -156,6 +156,14 @@ pub(crate) async fn handle(stream: UnixStream, system: Arc<dyn System>, services
             let _ = outbox.send(ServerMessage::Response { id, outcome }).await;
             continue;
         }
+        // Then the person's grants, for an app's data calls (R7 step 4).
+        if let Some(manifest) = &manifest {
+            if let Err(error) = services.identity.check(manifest, &call).await {
+                let outcome = Outcome::Error(error);
+                let _ = outbox.send(ServerMessage::Response { id, outcome }).await;
+                continue;
+            }
+        }
 
         let mut then_shut_down = false;
         let mut then_forward = None;

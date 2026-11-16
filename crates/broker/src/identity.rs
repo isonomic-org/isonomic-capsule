@@ -3,13 +3,23 @@
 //! kept by the `identity` crate, which depends on this one.
 
 use isonomic_proto::identity::Identity as PersonIdentity;
-use isonomic_proto::{ErrorCode, Manifest, WireError};
+use isonomic_proto::{Call, ErrorCode, Manifest, WireError};
 
 use crate::agents::BoxFuture;
 
 pub trait Identity: Send + Sync + 'static {
     /// The person's ID, made the first time it is asked for.
     fn get(&self) -> BoxFuture<'_, Result<PersonIdentity, WireError>>;
+
+    /// May the app `manifest` make `call`? Asked for every app call, after
+    /// the manifest's own checks. Yes by default.
+    fn check<'a>(
+        &'a self,
+        _manifest: &'a Manifest,
+        _call: &'a Call,
+    ) -> BoxFuture<'a, Result<(), WireError>> {
+        Box::pin(async { Ok(()) })
+    }
 
     /// An app was approved (`apps.grant`, recorded): give it its ID and
     /// grants. Nothing to do by default.
