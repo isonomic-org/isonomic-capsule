@@ -159,6 +159,54 @@ async fn a_revoked_grant_is_refused_after_a_restart() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn the_same_approval_after_a_restart_needs_no_key() {
+    // A scratch Capsule's second start: the ID and the grants are in the
+    // Capsule, but the in-memory keys of the first run are gone.
+    let dir = tempfile::tempdir().unwrap();
+    let notes = notes();
+    let apps = approved(dir.path(), &[&notes]);
+    let first = service(dir.path(), memory_backend(), &apps);
+    let made = first.get().await.unwrap();
+    assert!(made.created);
+    first.granted(&notes).await.unwrap();
+
+    let second = service(dir.path(), memory_backend(), &apps);
+    let again = second.get().await.unwrap();
+    assert_eq!(
+        (again.id, again.created),
+        (made.id, false),
+        "the same ID, read from the Capsule"
+    );
+    second
+        .granted(&notes)
+        .await
+        .expect("approving the same app again signs nothing");
+    for call in [query(), blob_get(), subscribe()] {
+        second
+            .check(&notes, &call)
+            .await
+            .unwrap_or_else(|e| panic!("{call:?}: {e:?}"));
+    }
+
+    // A new app does need signing, and says plainly why it can't be.
+    let mut reader = notes.clone();
+    reader.id = "com.isonomic.reader".into();
+    reader.schemas = vec![Schema {
+        name: "reader".into(),
+    }];
+    apps.grant(&reader).unwrap();
+    let refused = second.granted(&reader).await.unwrap_err();
+    assert_eq!(refused.code, ErrorCode::IdentityUnavailable);
+    assert!(
+        refused
+            .message
+            .contains("doesn't have the key that signs for your Isonomic ID"),
+        "{}",
+        refused.message
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
 #[ignore = "measures; run in release with --nocapture"]
 async fn what_a_check_costs() {
     let dir = tempfile::tempdir().unwrap();

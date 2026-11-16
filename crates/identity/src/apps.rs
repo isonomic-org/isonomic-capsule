@@ -121,7 +121,12 @@ impl AppIds {
     ) -> Result<(), IdentityError> {
         let _one = self.lock.lock().unwrap_or_else(|p| p.into_inner());
         let app = manifest.id.as_str();
-        let (owner, signer) = person.signer()?;
+        // The person's ID is read from the Capsule; the key that signs for
+        // it is opened only when there is something to sign. Approving an
+        // app again with the same capabilities (every launch does) then
+        // never touches the key store, so a scratch Capsule's second start,
+        // whose in-memory keys are gone, approves Chat as the first did.
+        let (owner, _) = person.get()?;
         let recipient = self.ensure_principal(person, &owner, app)?;
         let now_ms = person.now() * 1000;
         let saved = |e: rusqlite::Error| IdentityError::Save(e.to_string());
@@ -153,6 +158,7 @@ impl AppIds {
         if same {
             return Ok(());
         }
+        let (_, signer) = person.signer()?;
         let issued = wanted
             .into_iter()
             .map(|(selector, actions)| {
