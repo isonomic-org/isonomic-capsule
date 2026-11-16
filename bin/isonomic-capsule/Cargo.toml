@@ -12,6 +12,7 @@ agents.workspace = true
 appdb.workspace = true
 broker.workspace = true
 capsule-core.workspace = true
+identity.workspace = true
 packaging.workspace = true
 registry.workspace = true
 supervisor.workspace = true

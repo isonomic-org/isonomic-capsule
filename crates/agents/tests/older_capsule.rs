@@ -99,6 +99,13 @@ async fn a_format_one_capsule_opens_with_its_apps_and_sessions() {
         .unwrap();
     let (now, stop) = turn(&mut stream).await;
     assert_eq!(stop, "done", "the new turn: {now:?}");
+
+    // A Capsule from before Isonomic IDs gets one on first open, then the
+    // same one.
+    let made = shell.identity().await.unwrap();
+    assert!(made.created && made.id.starts_with("did:iso:"), "{made:?}");
+    let again = shell.identity().await.unwrap();
+    assert_eq!((again.id, again.created), (made.id, false));
 }
 
 /// Write the fixture from this build. Run once per format, by hand.

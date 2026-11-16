@@ -266,6 +266,10 @@ pub(crate) async fn handle(stream: UnixStream, system: Arc<dyn System>, services
                     Err(error) => Outcome::Error(error),
                 }
             }
+            Call::IdentityGet(_) => match services.identity.get().await {
+                Ok(identity) => Outcome::Result(Reply::Identity(identity)),
+                Err(error) => Outcome::Error(error),
+            },
             call if call.interface() == Interface::Agents => {
                 match services.agents.answer(manifest.as_ref(), call).await {
                     Ok(AgentsAnswer::Reply(reply)) => Outcome::Result(reply),

@@ -34,6 +34,11 @@ pub struct Marker {
     /// before markers.
     pub created_by: String,
     pub last_opened_by: String,
+    /// 32 random hex characters, made once and kept, so what the Capsule
+    /// keeps outside its folder (keychain items for its Isonomic ID) is
+    /// labelled for it, wherever the folder moves. Added without a format
+    /// change: older builds ignore it.
+    pub capsule_id: String,
 }
 
 /// Why a Capsule cannot be opened, in words a person can act on.
@@ -58,8 +63,9 @@ pub enum FormatError {
 impl Marker {
     fn render(&self) -> String {
         format!(
-            "{{\n  \"format\": {},\n  \"created_by\": \"{}\",\n  \"last_opened_by\": \"{}\"\n}}\n",
+            "{{\n  \"format\": {},\n  \"capsule_id\": \"{}\",\n  \"created_by\": \"{}\",\n  \"last_opened_by\": \"{}\"\n}}\n",
             self.format,
+            escape(&self.capsule_id),
             escape(&self.created_by),
             escape(&self.last_opened_by)
         )
@@ -78,8 +84,24 @@ impl Marker {
             format: field("format")?.parse().ok()?,
             created_by: field("created_by").unwrap_or_else(|| "unknown".into()),
             last_opened_by: field("last_opened_by").unwrap_or_else(|| "unknown".into()),
+            // Empty when missing: `open` makes one.
+            capsule_id: field("capsule_id")
+                .filter(|id| is_capsule_id(id))
+                .unwrap_or_default(),
         })
     }
+}
+
+fn is_capsule_id(id: &str) -> bool {
+    id.len() == 32 && id.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+/// 16 random bytes in hexadecimal, from the system's generator.
+fn new_capsule_id() -> std::io::Result<String> {
+    use std::io::Read;
+    let mut bytes = [0u8; 16];
+    std::fs::File::open("/dev/urandom")?.read_exact(&mut bytes)?;
+    Ok(bytes.iter().map(|b| format!("{b:02x}")).collect())
 }
 
 fn escape(s: &str) -> String {
@@ -122,6 +144,10 @@ pub fn open(paths: &CapsulePaths, engine: &str) -> Result<Marker, FormatError> {
             .as_ref()
             .map_or_else(|| first_maker(paths, engine), |m| m.created_by.clone()),
         last_opened_by: engine.to_string(),
+        capsule_id: match found.as_ref().map(|m| m.capsule_id.clone()) {
+            Some(id) if !id.is_empty() => id,
+            _ => new_capsule_id().map_err(|e| FormatError::Io(e.to_string()))?,
+        },
     };
     write(&path, &marker.render()).map_err(|e| FormatError::Io(e.to_string()))?;
     Ok(marker)
@@ -171,6 +197,8 @@ mod tests {
         assert_eq!((marker.format, marker.created_by.as_str()), (1, "0.9.0"));
         let again = open(&paths, "1.0.0").unwrap();
         assert_eq!(again.created_by, "0.9.0");
+        assert!(is_capsule_id(&marker.capsule_id), "{}", marker.capsule_id);
+        assert_eq!(again.capsule_id, marker.capsule_id, "made once and kept");
         assert_eq!(again.last_opened_by, "1.0.0");
     }
 
@@ -180,6 +208,7 @@ mod tests {
         std::fs::write(paths.registry_db(), b"").unwrap();
         let marker = open(&paths, "1.0.0").unwrap();
         assert_eq!((marker.format, marker.created_by.as_str()), (1, "unknown"));
+        assert!(is_capsule_id(&marker.capsule_id), "one is added");
         assert!(paths.capsule_marker().exists());
     }
 

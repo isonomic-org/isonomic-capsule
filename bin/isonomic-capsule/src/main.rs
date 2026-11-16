@@ -186,6 +186,14 @@ async fn run() -> Result<(), AnyError> {
         ))),
         agents: Arc::new(host),
         models: gateway,
+        // The person's Isonomic ID, made from the Mac's key store the first
+        // time the window asks for it.
+        identity: Arc::new(identity::IdentityService::new(identity::Person::new(
+            paths.root(),
+            &marker.capsule_id,
+            identity::system_backend(),
+            Arc::new(capsule_core::SystemClock),
+        ))),
     };
     let server = tokio::spawn(broker::serve(listener, system.clone(), Arc::new(services)));
 

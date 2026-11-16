@@ -1,0 +1,27 @@
+[package]
+name = "identity"
+description = "The person's Isonomic ID: made at first need from the Mac's key store, kept in the Capsule"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+broker.workspace = true
+capsule-core.workspace = true
+id-core.workspace = true
+id-keys.workspace = true
+isonomic-proto.workspace = true
+ring.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+security-framework.workspace = true
+
+[dev-dependencies]
+# The identity library's own checks, built here with this repo's lockfile.
+id-check.workspace = true
+id-eth.workspace = true
+id-grants.workspace = true
+id-resource.workspace = true
+tempfile.workspace = true

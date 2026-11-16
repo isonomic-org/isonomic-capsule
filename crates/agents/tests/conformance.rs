@@ -51,6 +51,12 @@ async fn conform(paths: &CapsulePaths, stack: Arc<Stack>, db: Arc<dyn Database>)
         sql: Sql::new(db),
         agents: Arc::new(host),
         models: Arc::new(broker::NoModels),
+        identity: Arc::new(identity::IdentityService::new(identity::Person::new(
+            paths.root(),
+            "00000000000000000000000000000000",
+            identity::memory_backend(),
+            Arc::new(SystemClock),
+        ))),
     };
     let socket = paths.engine_socket();
     let bound = broker::bind(&socket).unwrap();

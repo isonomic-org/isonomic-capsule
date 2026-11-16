@@ -152,6 +152,7 @@ async fn rig_on(total_memory_bytes: u64, free: u64, prepare: impl FnOnce(&std::p
         sql: Sql::new(Arc::new(appdb::StandIn::default())),
         agents: Arc::new(broker::NoAgents),
         models: Arc::new(gateway),
+        identity: Arc::new(broker::identity::NoIdentity),
     };
     let stack = Arc::new(supervisor::Stack::new(None));
     let system = StackSystem::new(
