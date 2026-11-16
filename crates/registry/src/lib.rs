@@ -8,6 +8,7 @@
 
 pub mod check;
 mod grants;
+pub mod salvage;
 
 pub use grants::{Grant, GrantStore};
 

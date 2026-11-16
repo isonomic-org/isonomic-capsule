@@ -1,17 +1,17 @@
 //! A damaged `registry.db` must not stop the engine. Before anything opens
 //! it, the engine runs SQLite's `quick_check`. A file that fails is moved,
 //! never deleted, into the Capsule's `unreadable/` folder with a timestamp
-//! (its `-wal` and `-shm` files beside it), and the engine starts with an
-//! empty registry.
+//! (its `-wal` and `-shm` files beside it). What can still be read from it
+//! is copied into a new registry ([`crate::salvage`]), and the engine starts
+//! on that.
 //!
-//! What that costs the person, said plainly in [`SetAside::message`]: apps
-//! must be approved again. Their data in the database and their files are
-//! kept; the chats and the list of stored files from before stay in the
-//! set-aside copy and are not shown.
+//! [`SetAside::message`] says plainly what came back and what did not.
 
 use std::path::{Path, PathBuf};
 
 use rusqlite::{Connection, OpenFlags};
+
+use crate::salvage::{salvage, Salvage};
 
 /// A registry that failed its check and was moved aside.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -20,19 +20,62 @@ pub struct SetAside {
     pub to: PathBuf,
     /// What SQLite said.
     pub why: String,
+    /// What was copied from it into the new registry.
+    pub salvage: Salvage,
 }
 
 impl SetAside {
     /// What the engine logs, in words a person can act on.
     pub fn message(&self) -> String {
-        format!(
-            "The list of approved apps could not be read ({}), so it was set aside in {} \
-             and a new one was started. Apps must be approved again. Their data and files \
-             are kept; chats from before are in the set-aside copy and are not shown.",
+        let got = &self.salvage;
+        let mut text = format!(
+            "The list of apps and chats could not be read ({}). It was set aside in {}",
             self.why,
             self.to.display()
-        )
+        );
+        if !got.readable {
+            text.push_str(
+                ", and nothing in it could be read, so a new one was started. Apps must be \
+                 approved again. Their data and files are kept; chats from before are in the \
+                 set-aside copy and are not shown.",
+            );
+            return text;
+        }
+        text.push_str(&format!(
+            ", and what could still be read was copied into a new one: {}",
+            count(got.chats, "chat", "chats")
+        ));
+        if got.chats_partial > 0 {
+            text.push_str(&format!(
+                " ({} missing part of their history)",
+                got.chats_partial
+            ));
+        }
+        text.push_str(" recovered");
+        if got.chats_lost > 0 {
+            text.push_str(&format!(", {} could not be read", got.chats_lost));
+        }
+        if got.uncounted.iter().any(|t| t == "sessions") {
+            text.push_str(", and more may be in the set-aside copy");
+        }
+        text.push_str(". ");
+        text.push_str(&match (got.apps, got.apps_lost) {
+            (0, _) => "Apps must be approved again.".to_string(),
+            (_, 0) if !got.uncounted.iter().any(|t| t == "grants") => {
+                "Approved apps keep their approvals.".to_string()
+            }
+            (kept, _) => format!(
+                "{} keep their approvals; any other must be approved again.",
+                count(kept, "app", "apps")
+            ),
+        });
+        text.push_str(" Their data and files are kept, and what was not recovered stays in the set-aside copy.");
+        text
     }
+}
+
+fn count(n: u64, one: &str, many: &str) -> String {
+    format!("{n} {}", if n == 1 { one } else { many })
 }
 
 /// Why `db` fails SQLite's quick check, or `None` when it passes or does
@@ -92,7 +135,9 @@ pub fn check_or_set_aside(
             std::fs::rename(&from, format!("{}{suffix}", to.display()))?;
         }
     }
-    Ok(Some(SetAside { to, why }))
+    let work = unreadable.join(format!(".salvage-{stamp}"));
+    let salvage = salvage(&to, db, &work)?;
+    Ok(Some(SetAside { to, why, salvage }))
 }
 
 /// A UTC timestamp for a file name: `20261116T071508Z`.
@@ -169,6 +214,7 @@ mod tests {
         );
         assert!(unreadable.join("registry-20261116T071508Z.db-wal").exists());
         let message = set.message();
+        assert!(!set.salvage.readable);
         assert!(message.contains("Apps must be approved again"), "{message}");
         assert!(message.contains("data and files are kept"), "{message}");
     }

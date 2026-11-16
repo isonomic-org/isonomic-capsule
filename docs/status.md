@@ -12,6 +12,27 @@ Newest first. This file is the engine's status from now on. The history of each 
 - [Problem reports](status/reports.md): the engine's own reports, the log ring, the shared crate.
 - [Later modules](status/engine-later.md): reserved crates.
 
+## 2026-11-16 · Registry: a damaged registry gives back what it still can
+
+- **Before the engine starts on a new registry,** what can still be read from the set-aside copy is copied into it (`registry::salvage`). Order:
+  - the chats (`sessions` and their `session_events`);
+  - the list of stored files (`blobs`);
+  - the approvals (`grants` and `tokens`) and the ID's records;
+  - indexes, which are made anew last, so a damaged index costs nothing.
+  `services` is not copied: it is rebuilt at start.
+- **The set-aside copy is never opened.** The work runs on a throwaway duplicate with its `-wal`, so the latest writes are read too, and the duplicate is removed afterwards.
+- **Row by row, by key,** because a damaged page then costs only its own rows:
+  - tables with rowids are read one rowid at a time;
+  - a chat's events are read one sequence number at a time;
+  - a row that fails to read is counted as lost, and a row that is not there was deleted;
+  - probes are bounded, so a table whose root is damaged cannot hold up the start.
+- **The start message says what came back,** for example "297 chats recovered, 3 could not be read. Approved apps keep their approvals." If nothing in the file could be read, it says so, and that apps must be approved again. In every case it says that data and files are kept, and that what was not recovered stays in the set-aside copy.
+- **Checked, on a registry built with the engine's own table definitions:**
+  - a damaged header gives back nothing, and says so;
+  - one damaged page of the chats table costs only that page's chats, while every approval, every stored file and every recovered chat's history comes back;
+  - a damaged index costs nothing;
+  - in each case the set-aside copy is unchanged byte for byte, no working copy is left, and the new registry passes the check.
+
 ## 2026-11-16 · Engine core and broker: a damaged registry is set aside; the socket under hostile input
 
 - **A damaged `registry.db` no longer stops the engine.** Before anything opens it, the engine runs SQLite's `quick_check` (`registry::check`). The check opens the file read-only and immutable, so it writes nothing and leaves `-wal` and `-shm` as they were.
