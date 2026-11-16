@@ -1,6 +1,7 @@
 //! The recovery kit: what lets a person who loses their Mac have the same
 //! Isonomic ID on a new one. Local only: the kit is a document the window
-//! saves as a file and prints; nothing goes to a network.
+//! saves as a file, and words the person writes down; nothing goes to a
+//! network.
 //!
 //! **The document** (`isonomic-recovery-kit`, version 1) is JSON: the ID,
 //! when it was made, `recovery` (a short fingerprint of the recovery key,
@@ -11,7 +12,7 @@
 //!
 //! **The words are not in the document.** The recovery seed, as 24 words
 //! ([`crate::words`]), is given to the shell beside it, for the person to
-//! write down or print; restoring needs both the file and the words, so a
+//! write down on paper; restoring needs both the file and the words, so a
 //! found file alone gives nobody the ID. The words never reach the engine's
 //! log, a problem report or an error message, and `Debug` hides them.
 //!

@@ -21,7 +21,7 @@ Newest first. This file is the engine's status from now on. The history of each 
   - the person's key log, each signed entry in hex;
   - `check`, the SHA-256 of the rest.
   A document that is not a kit, is newer, fails its check, or whose log does not verify is refused, in plain words.
-- **The words are not in the file** (the orchestrator's decision). Export gives them beside the document, for the person to write down or for the window to print. Restore needs both, so a found file alone gives nobody the ID.
+- **The words are not in the file** (the orchestrator's decision). Export gives them beside the document, for the person to write down on paper; version 1 has no printing. Restore needs both, so a found file alone gives nobody the ID.
 - **The words never reach** the engine's log, a problem report or an error message:
   - a refusal names a word by its position, never by what was typed;
   - the export and restore results' debug print hides the words.
