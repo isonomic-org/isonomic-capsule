@@ -218,8 +218,29 @@ impl broker::Agents for EngineAgents {
         manifest: Option<&'a Manifest>,
         call: Call,
     ) -> BoxFuture<'a, Result<AgentsAnswer, WireError>> {
-        Box::pin(async move { self.reply(&caller(manifest), call).await })
+        Box::pin(async move {
+            let method = call.method();
+            let app = manifest.map_or("shell", |m| m.id.as_str());
+            let answer = self.reply(&caller(manifest), call).await;
+            if let Err(e) = &answer {
+                refused(app, method, e);
+            }
+            answer
+        })
     }
+}
+
+/// Every refused agents call goes to the engine's log with its code, so a
+/// run shows why a call failed even when the app drops the error.
+fn refused(app: &str, method: &str, e: &WireError) {
+    let code = serde_json::to_value(e.code)
+        .ok()
+        .and_then(|v| v.as_str().map(str::to_string))
+        .unwrap_or_else(|| format!("{:?}", e.code));
+    eprintln!(
+        "[isonomic-capsule] info: {method} from {app} refused: {code}: {}",
+        e.message
+    );
 }
 
 /// Forward a session's events, and its live deltas between them, as
