@@ -118,11 +118,14 @@ fn error(message: impl Into<String>) -> ErrorInfo {
 
 impl ModelClient for GatewayModel {
     fn caps(&self, model: &str) -> ModelCaps {
+        // What one conversation can hold: the model's own window, cut to
+        // the chat worker's slot. Compaction works from this number.
         let context = self
             .resolve(model)
             .and_then(|id| self.gateway.catalogue().get(&id).cloned())
             .and_then(|e| e.meta.context_length)
-            .unwrap_or(4096);
+            .unwrap_or(gateway::SLOT_CONTEXT)
+            .min(gateway::SLOT_CONTEXT);
         ModelCaps {
             // The llama.cpp server continues a final assistant message (its
             // assistant prefill), which is how the harness asks to continue.
@@ -251,5 +254,48 @@ mod tests {
             "Be brief.\n\nCurrent date: Sunday, 15 November 2026. Language: en."
         );
         assert_eq!(out.messages[1].content, "Plan one day in Lisbon.");
+    }
+}
+
+#[cfg(test)]
+mod caps_tests {
+    use super::*;
+    use std::sync::Arc;
+
+    struct Open;
+    impl capsule_core::RamGate for Open {
+        fn admit(&self, _: u64) -> Result<(), capsule_core::RamDenial> {
+            Ok(())
+        }
+    }
+
+    fn model(context: u32) -> (tempfile::TempDir, GatewayModel) {
+        let hash = "0".repeat(64);
+        let entry = |id: &str, ctx: u32| {
+            format!(
+                r#"{{"id":"{id}","name":"{id}","file_name":"{id}.gguf","source_url":"https://example.invalid/{id}","sha256":"{hash}","size_bytes":1,"context_length":{ctx},"capabilities":["chat"],"license":{{"name":"Apache-2.0","commercial_use":true,"url":"https://example.invalid"}}}}"#
+            )
+        };
+        let json = format!(
+            r#"{{"default_chat":"big","models":[{},{}]}}"#,
+            entry("big", 262144),
+            entry("small", context)
+        );
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().to_path_buf();
+        std::fs::write(dir.join("big.gguf"), [0]).unwrap();
+        std::fs::write(dir.join("small.gguf"), [0]).unwrap();
+        let manifest = isonomic_model_library::Manifest::from_json(&json).unwrap();
+        let gateway = gateway::Gateway::new(manifest, dir, None, Arc::new(Open), false);
+        (tmp, GatewayModel::new(Arc::new(gateway)))
+    }
+
+    #[test]
+    fn a_models_context_is_cut_to_the_workers_slot() {
+        let (_dir, m) = model(2048);
+        assert_eq!(m.caps("local:default").context_tokens, 8192);
+        assert_eq!(m.caps("big").context_tokens, 8192);
+        assert_eq!(m.caps("local:small").context_tokens, 2048);
+        assert_eq!(m.caps("nope").context_tokens, 8192);
     }
 }
