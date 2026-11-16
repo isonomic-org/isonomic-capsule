@@ -46,7 +46,7 @@ pub async fn start(parts: Parts) -> Result<EngineAgents, harness_host::HostError
         store: parts.store.clone(),
         model: parts.model,
         clients: Arc::new(NoClientTools),
-        scopes: parts.scopes,
+        scopes: parts.scopes.clone(),
         blobs: Arc::new(MemoryBlobs::default()),
         spawner: Arc::clone(&spawner),
         clock: Arc::new(WallClock),
@@ -61,5 +61,5 @@ pub async fn start(parts: Parts) -> Result<EngineAgents, harness_host::HostError
     config.profile = Some(profile(parts.profile));
     let host = Host::new(deps, config);
     host.recover().await?;
-    Ok(EngineAgents::new(host, parts.store, parts.gateway))
+    Ok(EngineAgents::new(host, parts.store, parts.gateway).with_scopes(parts.scopes))
 }

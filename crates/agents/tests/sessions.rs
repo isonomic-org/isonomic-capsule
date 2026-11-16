@@ -18,6 +18,7 @@ struct Engine {
     _dir: tempfile::TempDir,
     shell: Client,
     model: Arc<ScriptedModel>,
+    scopes: Arc<EngineScopes>,
 }
 
 fn manifest(name: &str) -> Manifest {
@@ -42,9 +43,10 @@ async fn engine() -> Engine {
         TokenKey::fixed([5; 32]),
     ));
     let model = Arc::new(ScriptedModel::default());
+    let scopes = Arc::new(EngineScopes::new(Arc::clone(&apps), Arc::new(SystemClock)));
     let parts = Parts {
         store: Arc::new(SqliteSessionStore::open(&paths.registry_db()).unwrap()),
-        scopes: Arc::new(EngineScopes::new(Arc::clone(&apps), Arc::new(SystemClock))),
+        scopes: Arc::clone(&scopes),
         model: model.clone(),
         locale: EngineLocale {
             zone: "Europe/Lisbon".into(),
@@ -78,6 +80,7 @@ async fn engine() -> Engine {
         _dir: dir,
         shell,
         model,
+        scopes,
     }
 }
 
@@ -93,6 +96,8 @@ fn kind(update: &SessionUpdate) -> String {
             .unwrap()
             .to_string(),
         SessionUpdate::Delta(_) => "delta".into(),
+        SessionUpdate::Ended(_) => "ended".into(),
+        SessionUpdate::Gap { .. } => "gap".into(),
     }
 }
 
@@ -243,4 +248,37 @@ async fn a_tool_result_for_a_call_never_issued_is_not_found() {
         Err(ClientError::Engine(e)) => assert_eq!(e.code, ErrorCode::NotFound),
         other => panic!("a bogus call id was accepted: {other:?}"),
     }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_shell_mints_a_user_action_the_host_accepts_and_apps_cannot() {
+    use harness_host::{AppKind, Caller, ScopeResolver, UserActionToken};
+    let engine = engine().await;
+    let chat = app(&engine, "chat").await;
+    let session = chat.agents().create("chat").await.unwrap();
+    let approval = isonomic_proto::agents::ApprovalId::from("apr_1");
+    let token = engine
+        .shell
+        .agents()
+        .user_action(&session, &approval, Some("com.isonomic.chat"))
+        .await
+        .unwrap();
+    let decider = Caller::app("com.isonomic.chat", AppKind::FirstParty);
+    let token = UserActionToken(token);
+    assert!(engine
+        .scopes
+        .verify_user_action(&decider, &token, &session, &approval));
+    // Minted for Chat: it proves nothing for the shell or another approval.
+    let other = isonomic_proto::agents::ApprovalId::from("apr_2");
+    assert!(!engine
+        .scopes
+        .verify_user_action(&Caller::shell(), &token, &session, &approval));
+    assert!(!engine
+        .scopes
+        .verify_user_action(&decider, &token, &session, &other));
+    let refused = chat
+        .agents()
+        .user_action(&session, &approval, Some("com.isonomic.chat"))
+        .await;
+    assert!(refused.is_err(), "an app minted a user action: {refused:?}");
 }

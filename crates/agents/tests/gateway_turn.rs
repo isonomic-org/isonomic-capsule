@@ -241,6 +241,7 @@ async fn a_stopped_reply_continues_from_its_partial_text() {
                     break;
                 }
             }
+            other => panic!("unexpected {other:?}"),
         }
     }
     server.release_stream();

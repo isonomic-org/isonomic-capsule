@@ -18,12 +18,13 @@ use harness_host::{
     Subscription, Update, UserActionToken,
 };
 use harness_log::SessionStore;
+use isonomic_proto::agents::{EndReason, SessionEnded};
 use isonomic_proto::{Call, ErrorCode, Event, Manifest, Reply, ServerMessage, WireError};
 use tokio::sync::mpsc;
 
 use gateway::Gateway;
 
-use crate::convert;
+use crate::{convert, EngineScopes};
 
 pub struct EngineAgents {
     host: Host,
@@ -31,11 +32,13 @@ pub struct EngineAgents {
     /// Checks the model a session is created with; `None` passes any name
     /// (a host on a scripted model, in tests).
     gateway: Option<Arc<Gateway>>,
+    /// Mints the tokens `approvals.user_action` hands the window; `None`
+    /// answers that call `unsupported`.
+    scopes: Option<Arc<EngineScopes>>,
 }
 
-/// The longest model name `sessions.create` takes. The host records the
-/// name in the session's log as it is given.
-pub const MAX_MODEL_NAME: usize = 128;
+/// The longest model name `sessions.create` takes, as the SDK checks it.
+pub use isonomic_proto::agents::MAX_MODEL_NAME;
 
 fn caller(manifest: Option<&Manifest>) -> Caller {
     match manifest {
@@ -56,28 +59,74 @@ impl EngineAgents {
             host,
             store,
             gateway,
+            scopes: None,
         }
     }
 
-    /// The model a session is created with: trimmed and bounded, then
-    /// checked with the rule `models.stream` applies. Blank means the
-    /// preset's own model.
+    /// Mint `approvals.user_action` tokens with `scopes`, the resolver the
+    /// host verifies them with.
+    pub fn with_scopes(mut self, scopes: Arc<EngineScopes>) -> Self {
+        self.scopes = Some(scopes);
+        self
+    }
+
+    /// The model a session is created with: checked as the SDK checks a
+    /// name, then with the rule `models.stream` applies, the manifest
+    /// first.
     fn session_model(
         &self,
         manifest: Option<&Manifest>,
         named: Option<String>,
     ) -> Result<Option<String>, WireError> {
-        let Some(name) = named.as_deref().map(str::trim).filter(|n| !n.is_empty()) else {
+        let Some(named) = named else {
             return Ok(None);
         };
-        if name.chars().count() > MAX_MODEL_NAME {
-            let message = format!("a model name is at most {MAX_MODEL_NAME} characters");
-            return Err(WireError::new(ErrorCode::BadRequest, message));
+        let name = isonomic_proto::agents::model_name(&named)?;
+        self.check_model(manifest, name).map(Some)
+    }
+
+    /// The manifest first, so an app learns nothing about models it may
+    /// not use; then the gateway's rule, when there is a gateway.
+    fn check_model(&self, manifest: Option<&Manifest>, id: &str) -> Result<String, WireError> {
+        if let Some(m) = manifest {
+            let app = isonomic_proto::auth::Caller::App {
+                id: &m.id,
+                capabilities: &m.capabilities,
+            };
+            isonomic_proto::auth::authorize_model(app, id, false)?;
         }
         match &self.gateway {
-            Some(gateway) => gateway.check_session_model(manifest, name).map(Some),
-            None => Ok(Some(name.to_string())),
+            Some(gateway) => gateway.check_session_model(manifest, id),
+            None => Ok(id.to_string()),
         }
+    }
+
+    /// An app's own stored preset names its model too, and the same rule
+    /// holds: an app cannot reach a model through a preset it stored.
+    /// Built-in presets are the engine's choice and are not checked, nor
+    /// are the engine's own choices `local:default` and `local:smallest`.
+    async fn check_preset_model(
+        &self,
+        manifest: Option<&Manifest>,
+        who: &Caller,
+        preset: &harness_core::PresetId,
+    ) -> Result<(), WireError> {
+        if manifest.is_none() {
+            return Ok(());
+        }
+        let Ok(stored) = self.host.get_preset(who, preset).await else {
+            // The host answers an unknown preset itself.
+            return Ok(());
+        };
+        let (Some(_), Some(parsed)) = (&stored.owner, &stored.preset) else {
+            return Ok(());
+        };
+        let id = parsed.model.id.as_str();
+        let id = id.strip_prefix("local:").unwrap_or(id);
+        if matches!(id, "default" | "smallest") {
+            return Ok(());
+        }
+        self.check_model(manifest, id).map(|_| ())
     }
 
     pub fn host(&self) -> &Host {
@@ -114,6 +163,9 @@ impl EngineAgents {
         let err = convert::error;
         let reply = match call {
             Call::SessionsCreate(c) => {
+                if c.model.is_none() {
+                    self.check_preset_model(manifest, who, &c.preset).await?;
+                }
                 let opts = CreateOptions {
                     title: c.title,
                     location_opt_in: c.location_opt_in,
@@ -179,7 +231,7 @@ impl EngineAgents {
             }
             Call::SessionsSubscribe(s) => {
                 let sub = host.subscribe(who, &s.session, s.from_seq).await;
-                return Ok(AgentsAnswer::Stream(stream(sub.map_err(err)?)));
+                return Ok(AgentsAnswer::Stream(stream(sub.map_err(err)?, s.session)));
             }
             Call::ApprovalsList(a) => {
                 let all = host.list_approvals(who).await.map_err(err)?;
@@ -193,6 +245,21 @@ impl EngineAgents {
                 let decision = convert::decision(d.decision);
                 let decided = host.decide_approval(who, &d.session, &d.approval, decision, token);
                 done(decided.await)?
+            }
+            // `proto::auth` lets only the shell mint one.
+            Call::ApprovalsUserAction(m) => {
+                let Some(scopes) = &self.scopes else {
+                    let message = "user actions are not minted here";
+                    return Err(WireError::new(ErrorCode::Unsupported, message));
+                };
+                let decider = match &m.app {
+                    None => Caller::shell(),
+                    Some(app) => Caller::app(app.as_str(), AppKind::FirstParty),
+                };
+                let token = scopes
+                    .mint(&decider, &m.session, &m.approval)
+                    .map_err(|e| WireError::new(ErrorCode::Internal, e.to_string()))?;
+                Reply::UserAction { token: token.0 }
             }
             Call::QuestionsAnswer(q) => {
                 let answer = AnswerInput {
@@ -236,7 +303,8 @@ impl EngineAgents {
             },
             Call::ArtifactsGet(g) => {
                 let version = host.get_artifact(who, &g.artifact, g.version).await;
-                Reply::Artifact(Box::new(convert::artifact(version.map_err(err)?)))
+                let chunk = convert::artifact(version.map_err(err)?, g.offset, g.length)?;
+                Reply::Artifact(Box::new(chunk))
             }
             Call::ArtifactsList(l) => {
                 Reply::Artifacts(host.list_artifacts(who, &l.session).await.map_err(err)?)
@@ -284,8 +352,9 @@ fn refused(app: &str, method: &str, e: &WireError) {
 }
 
 /// Forward a session's events, and its live deltas between them, as
-/// `session_event` and `live_delta` events on one subscription.
-fn stream(mut sub: Subscription) -> Starter {
+/// `session_event` and `live_delta` events on one subscription, then
+/// `session_ended` when the host ends it.
+fn stream(mut sub: Subscription, session: SessionId) -> Starter {
     Box::new(
         move |subscription: u64, outbox: mpsc::Sender<ServerMessage>| {
             tokio::spawn(async move {
@@ -303,6 +372,17 @@ fn stream(mut sub: Subscription) -> Starter {
                         return;
                     }
                 }
+                // The host ends a subscription only when its session is
+                // purged, so the app can tell it from a dropped connection.
+                let event = Event::SessionEnded(SessionEnded {
+                    session,
+                    reason: EndReason::Purged,
+                });
+                let message = ServerMessage::Event {
+                    subscription,
+                    event,
+                };
+                let _ = outbox.send(message).await;
             })
         },
     )

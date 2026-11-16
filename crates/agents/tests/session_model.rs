@@ -207,9 +207,12 @@ async fn a_picked_model_is_checked_then_runs_the_session() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_blank_name_runs_the_presets_model() {
+async fn a_blank_name_is_refused_and_no_name_runs_the_presets_model() {
     let rig = rig(true).await;
-    let session = rig.chat.agents().create_with(create("   ")).await.unwrap();
+    // As the SDK checks a name: blank is a mistake, not "the preset's own".
+    let blank = rig.chat.agents().create_with(create("   ")).await;
+    assert_eq!(code(blank), ErrorCode::BadRequest);
+    let session = rig.chat.agents().create("chat").await.unwrap();
     let end = turn(&rig, &session).await;
     assert_eq!(end["stop"], "done", "{end}");
     assert_eq!(asked_model(&rig), "chat-default");

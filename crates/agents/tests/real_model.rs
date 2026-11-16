@@ -83,6 +83,7 @@ async fn rig() -> Rig {
         },
         profile: Profile::Standard,
         engine_tools: false,
+        gateway: Some(Arc::clone(&gateway)),
     })
     .await
     .unwrap();
@@ -162,6 +163,7 @@ async fn turn(
                     _ => {}
                 }
             }
+            other => panic!("unexpected {other:?}"),
         }
     }
 }
