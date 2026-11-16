@@ -11,6 +11,12 @@ Newest first. This file is the engine's status from now on. The history of each 
 - [Packaging](status/packaging.md): bundled services and the app bundle.
 - [Later modules](status/engine-later.md): reserved crates.
 
+## 2026-11-16 · Problem reports: the agents host's and the gateway's lines are in the log ring
+
+- The engine's log ring moved to `capsule_core::log`, so every engine crate writes into the one ring a panic report carries. `reports::log` re-exports it.
+- The two crates that printed to standard error directly now write through it: the agents host's refused calls (`info: <method> from <app> refused: <code>: …`) and the gateway's chat-template warning. Nothing in the engine prints around it now. The harness and the inference crates print nothing.
+- Checked: a refused agents call is in the ring.
+
 ## 2026-11-16 · Packaging: every bundled program's licence is in the notice, or the fetch fails
 
 - On the Mac run of `fetch-sidecars`, the model server had no licence text in `NOTICES.txt`. Its install predated `licenseFiles`, and its stamp still matched, so it was never installed again.
@@ -37,7 +43,7 @@ Newest first. This file is the engine's status from now on. The history of each 
   - the hook writes a report with the engine's log before the process ends;
   - names and the keep limit match the window's;
   - a refused Capsule gets no report.
-- **Not yet:** lines the agents host and the gateway print to standard error directly are not in the ring; only the engine's own log is.
+- Lines the agents host and the gateway printed directly were added to the ring in the entry above.
 
 ## 2026-11-16 · Packaging: every bundled file runs on macOS 13.3
 
