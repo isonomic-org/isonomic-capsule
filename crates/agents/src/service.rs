@@ -212,6 +212,10 @@ impl EngineAgents {
             }
             Call::SessionsRename(r) => done(host.rename_session(who, &r.session, r.title).await)?,
             Call::SessionsSend(s) => {
+                // A person's prompt goes before any title still waiting.
+                if let Some(gateway) = &self.gateway {
+                    gateway.foreground_began();
+                }
                 let input = Input {
                     content: s.content,
                     client_ref: s.client_ref,
@@ -221,7 +225,12 @@ impl EngineAgents {
                     queued: accepted.queued,
                 }
             }
-            Call::SessionsContinue(r) => done(host.continue_reply(who, &r.session).await)?,
+            Call::SessionsContinue(r) => {
+                if let Some(gateway) = &self.gateway {
+                    gateway.foreground_began();
+                }
+                done(host.continue_reply(who, &r.session).await)?
+            }
             Call::SessionsCancel(r) => done(host.cancel(who, &r.session).await)?,
             Call::SessionsPurge(p) => {
                 // `proto::auth` lets only the shell name another app, and

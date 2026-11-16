@@ -13,6 +13,26 @@ Newest first. This file is the engine's status from now on. The history of each 
 - [Problem reports](status/reports.md): the engine's own reports, the log ring, the shared crate.
 - [Later modules](status/engine-later.md): reserved crates.
 
+## 2026-11-16 · Agents: a person's prompt never waits behind a title
+
+- **What the Mac measured** (`turn_stages`, the 2B model). A second prompt sent as soon as the first reply ended reached its first text after 4.8 s, the same instant the title was written. One sent after the title took 1.8 s. The cache was reused either way (25 prompt tokens evaluated on turn 2), and the check took microseconds.
+- **Why:** after turn 1 the harness writes the chat's title inside that turn, on the model's other slot, re-reading about 200 tokens. A new prompt waits for the turn, and so for the title.
+- **What the engine does now** (`GatewayModel::with_title_quiet`, on in the engine):
+  - a title request waits `TITLE_QUIET` (2 s) after its turn before it is sent;
+  - if a person's turn begins meanwhile (`sessions.send` or `sessions.continue`, through `Gateway::foreground_began`), the title ends at once with `title.yielded`;
+  - it also ends at once if the turn begins while the title is being written. Its model request is then dropped, so the model server stops it.
+  The harness then gives the chat its quick title from the first prompt, and runs the person's turn. Replies never wait.
+- **Title requests are told apart** by the model the preset names for them, `local:smallest`. The harness's request carries no purpose.
+- **What the engine cannot do alone:**
+  - **cancel a prompt evaluation already running on the model server.** A batch in progress finishes first, which is why the quiet period matters most;
+  - **try the model title again after the next turn.** The harness marks a chat titled before it tries, and gives the quick title when a title step fails;
+  - **reuse the conversation slot's cache for the title.** The harness builds the title with its own system prompt, so it shares no prefix with the conversation.
+  These are requests to the harness, filed through the orchestrator.
+- **Checked:**
+  - on tokio's paused clock: a title that meets a turn in its quiet period yields unsent, one that meets none is sent after the period, and a reply is sent at once;
+  - against the fake model server: a title being written yields the moment a turn begins.
+- **The Mac check:** `turn_stages` now fails if the second prompt sent at once reaches its first text later than one and a half times the after-title case plus a second. The engine's title rules are on in it.
+
 ## 2026-11-16 · Identity: approving the same app again signs nothing
 
 - **The fault the Mac found** (build 0.9.0-143, the self-check's link run). On a scratch Capsule's second start, the window approved Chat again, as every launch does, and the engine answered `identity_unavailable`: "Your computer's key store didn't let Isonomic make your ID (no such key)". So the window had no token for Chat, and Chat never mounted.

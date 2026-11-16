@@ -35,3 +35,5 @@ isonomic-conformance.workspace = true
 supervisor.workspace = true
 registry.workspace = true
 tempfile.workspace = true
+# Paused time, for the title's quiet period.
+tokio = { workspace = true, features = ["test-util"] }

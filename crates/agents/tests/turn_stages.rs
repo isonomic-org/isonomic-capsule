@@ -21,6 +21,11 @@
 //!   how many prompt tokens it reused from its cache and how many it
 //!   evaluated, and its timings;
 //! - when the first text reached the app, and when the turn ended.
+//!
+//! It fails if the second prompt sent at once reaches its first text later
+//! than one and a half times the after-title case plus a second: a person's
+//! prompt must never wait behind a title. The engine's title rules
+//! (`agents::TITLE_QUIET`) are on, as in the engine.
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -164,7 +169,9 @@ async fn rig(clock: Shared) -> (tempfile::TempDir, AppClient) {
     let host = agents::start(Parts {
         store: Arc::new(SqliteSessionStore::open(&paths.registry_db()).unwrap()),
         scopes: Arc::new(EngineScopes::new(Arc::clone(&apps), Arc::new(SystemClock))),
-        model: Arc::new(GatewayModel::new(Arc::clone(&gateway))),
+        model: Arc::new(
+            GatewayModel::new(Arc::clone(&gateway)).with_title_quiet(agents::TITLE_QUIET),
+        ),
         locale: EngineLocale {
             zone: "Europe/Lisbon".into(),
             offset_minutes: 0,
@@ -242,6 +249,8 @@ async fn where_a_turns_time_goes() {
     let clock: Shared = Arc::default();
     let (_dir, chat) = rig(Arc::clone(&clock)).await;
     let agents = chat.agents();
+    // When the second prompt's first text came, in each case.
+    let mut second_first: Vec<Duration> = Vec::new();
     for (case, wait_for_title) in [
         ("second prompt at once", false),
         ("second prompt after the title", true),
@@ -257,12 +266,16 @@ async fn where_a_turns_time_goes() {
             }
             mark(&clock, format!("sent prompt {}", n + 1));
             agents.send_text(&session, prompt).await.unwrap();
+            let sent_at = Instant::now();
             let mut first = false;
             loop {
                 let next = tokio::time::timeout(Duration::from_secs(600), stream.next()).await;
                 match next.expect("no update within 600 s").expect("stream ended") {
                     SessionUpdate::Delta(_) if !first => {
                         first = true;
+                        if n == 1 {
+                            second_first.push(sent_at.elapsed());
+                        }
                         mark(&clock, "first text reached the app".into());
                     }
                     SessionUpdate::Event(e) => {
@@ -270,6 +283,12 @@ async fn where_a_turns_time_goes() {
                         match value["type"].as_str() {
                             Some("assistant") if !first => {
                                 first = true;
+                                if n == 1 {
+                                    second_first.push(sent_at.elapsed());
+                                }
+                                if n == 1 {
+                                    second_first.push(sent_at.elapsed());
+                                }
                                 mark(&clock, "first text reached the app".into());
                             }
                             Some("title") => mark(&clock, "title written".into()),
@@ -311,4 +330,20 @@ async fn where_a_turns_time_goes() {
             }
         }
     }
+    // A second prompt sent at once never waits behind the title: it reaches
+    // its first text about as soon as one sent after the title does.
+    let [at_once, after_title] = second_first[..] else {
+        panic!("first text for both second prompts: {second_first:?}")
+    };
+    let bound = after_title.mul_f64(1.5) + Duration::from_secs(1);
+    println!(
+        "second prompt first text: at once {:.2} s, after the title {:.2} s (bound {:.2} s)",
+        at_once.as_secs_f64(),
+        after_title.as_secs_f64(),
+        bound.as_secs_f64()
+    );
+    assert!(
+        at_once <= bound,
+        "the second prompt waited behind the title"
+    );
 }
