@@ -1,7 +1,7 @@
 //! The person's Isonomic ID (isonomic-sdk request R7, step 1), served to the
 //! window as `identity.get`.
 //!
-//! The ID is made the first time it is asked for, from the Mac's key store,
+//! The ID is made the first time it is asked for, from the computer's key store,
 //! and kept in the Capsule (`person`). On a computer without a Mac key store
 //! (Linux, in CI and development) it is unavailable, in plain words; tests
 //! give it the identity library's in-memory store instead.
@@ -25,9 +25,9 @@ pub use secrets::{MemorySecrets, Secrets};
 
 /// What a person reads when this computer cannot make an ID.
 pub const NO_KEY_STORE: &str =
-    "Isonomic IDs are made with a Mac's key store, and this computer has none.";
+    "Isonomic IDs are made with your computer's key store, and this computer has none Isonomic can use.";
 
-/// The backend the engine uses: the Mac's key store and keychain, or none.
+/// The backend the engine uses: the computer's key store, or none.
 pub fn system_backend() -> OpenBackend {
     #[cfg(target_os = "macos")]
     {

@@ -152,7 +152,7 @@ fn a_refused_key_store_is_said_in_plain_words() {
     });
     let refused = person(dir.path(), locked).get().unwrap_err().to_string();
     assert!(
-        refused.starts_with("Your Mac's keychain didn't let Isonomic make your ID"),
+        refused.starts_with("Your computer's key store didn't let Isonomic make your ID"),
         "{refused}"
     );
     assert!(refused.contains("unlock it, then try again"), "{refused}");

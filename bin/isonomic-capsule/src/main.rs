@@ -173,7 +173,7 @@ async fn run() -> Result<(), AnyError> {
     })
     .await
     .map_err(|e| format!("the agents host did not start: {e:?}"))?;
-    // The person's Isonomic ID, made from the Mac's key store the first
+    // The person's Isonomic ID, made from the computer's key store the first
     // time the window asks for it, and the directory of accepted logs.
     let person = identity::Person::new(
         paths.root(),
