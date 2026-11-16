@@ -71,6 +71,9 @@ pub struct Gateway {
     source: Source,
     disk: Arc<dyn DiskSpace>,
     stall: fetch::Stall,
+    /// How long a worker may sit idle before it is unloaded; `None` in the
+    /// outer option keeps the inference supervisor's own default.
+    idle_unload: Option<Option<std::time::Duration>>,
 }
 
 /// The engine's memory gate, as the inference supervisor asks for it.
@@ -126,6 +129,7 @@ impl Gateway {
             source: Box::new(ModelEntry::spec),
             disk: Arc::new(SystemDisk),
             stall: fetch::stall_limit(),
+            idle_unload: None,
         }
     }
 
@@ -137,6 +141,13 @@ impl Gateway {
     /// Where the free disk space before a download is read.
     pub fn with_disk(mut self, disk: Arc<dyn DiskSpace>) -> Self {
         self.disk = disk;
+        self
+    }
+
+    /// How long a model may sit idle before its worker is unloaded: the
+    /// profile's `model_idle_unload()` (`None`: never).
+    pub fn with_idle_unload(mut self, idle: Option<std::time::Duration>) -> Self {
+        self.idle_unload = Some(idle);
         self
     }
 
@@ -216,20 +227,30 @@ impl Gateway {
         if let Some(worker) = workers.get(&id) {
             return Ok(Arc::clone(worker));
         }
-        let Some(server) = &self.server else {
+        let Some(config) = self.launch_config(entry, mode) else {
             return Err(unavailable("the local model runtime is not installed"));
         };
-        let mut config = LlamaConfig::new(server.clone(), self.catalogue.path(entry));
-        config.mode = mode;
-        if mode == ServerMode::Chat {
-            chat_worker::configure(&mut config, entry, self.catalogue.dir());
-        }
-        (self.configure)(&mut config);
         let gate = Arc::new(Gate(Arc::clone(&self.gate)));
         let supervisor = Arc::new(LlamaSupervisor::new(config, gate));
         let worker = Arc::new(LocalLlama::for_model(supervisor, &entry.meta));
         workers.insert(id, Arc::clone(&worker));
         Ok(worker)
+    }
+
+    /// What `entry`'s worker is launched with in `mode`; `None` without the
+    /// bundled server.
+    pub fn launch_config(&self, entry: &ModelEntry, mode: ServerMode) -> Option<LlamaConfig> {
+        let server = self.server.as_ref()?;
+        let mut config = LlamaConfig::new(server.clone(), self.catalogue.path(entry));
+        config.mode = mode;
+        if let Some(idle) = self.idle_unload {
+            config.idle_unload = idle;
+        }
+        if mode == ServerMode::Chat {
+            chat_worker::configure(&mut config, entry, self.catalogue.dir());
+        }
+        (self.configure)(&mut config);
+        Some(config)
     }
 
     /// How a model is doing: downloading, not installed, or its worker's

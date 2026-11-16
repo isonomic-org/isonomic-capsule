@@ -69,7 +69,7 @@ Newest first.
 
 **Deferred**
 
-- Sessions and capability tokens: the app model, Milestone 4. Any local process running as the user can call `system` today.
+- Sessions and capability tokens: the app model, Milestone 4. Any local process running as the user can call `system` today. Still so in version 1: see the known limitations in `docs/status.md`.
 - Recording calls for the Activity tab.
 - The previous protocol version: there is only one so far.
 

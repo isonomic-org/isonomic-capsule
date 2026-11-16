@@ -148,7 +148,10 @@ async fn run() -> Result<(), AnyError> {
         .with_machine(gateway::Machine {
             profile: profile.to_string(),
             total_memory_bytes,
-        }),
+        })
+        // A reader who answers after ten minutes keeps the warm model and
+        // its cache on the standard profile.
+        .with_idle_unload(profile.model_idle_unload()),
     );
     // The agents host, on the gateway's models.
     let locale = agents::deps::EngineLocale::from_system();

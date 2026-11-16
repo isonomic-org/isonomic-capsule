@@ -143,6 +143,8 @@ pub fn service(
     .map(String::from)
     .to_vec();
     config.data_dir = Some(layout.data_dir.clone());
+    // The server's own record of itself, should the engine's be lost.
+    config.own_pid_file = Some(layout.data_dir.join("postmaster.pid"));
     config.socket = Some(socket_path(&layout.socket_dir));
     config.env = env;
     config.readiness = Readiness::PostgresQuery {

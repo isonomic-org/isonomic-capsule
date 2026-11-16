@@ -337,3 +337,40 @@ async fn a_chat_worker_has_a_slot_for_titles_and_keeps_each_slots_context() {
     // Not a Qwen3.5 model: its own chat template.
     assert_eq!(after("--chat-template-file"), None);
 }
+
+#[test]
+fn a_worker_unloads_after_the_profiles_idle_time() {
+    use capsule_core::Profile;
+    use isonomic_llama::ServerMode;
+    let dir = tempfile::tempdir().unwrap();
+    let models = dir.path().join("models");
+    std::fs::create_dir_all(&models).unwrap();
+    let manifest = Manifest::from_json(&catalogue_json()).unwrap();
+    let entry = manifest.default_chat().clone();
+    let gateway = |idle: Option<Option<Duration>>| {
+        let manifest = Manifest::from_json(&catalogue_json()).unwrap();
+        let gate = Arc::new(Gate(AtomicU64::new(1 << 30)));
+        let server = Some(dir.path().join("llama-server"));
+        let g = Gateway::new(manifest, models.clone(), server, gate, false);
+        match idle {
+            Some(idle) => g.with_idle_unload(idle),
+            None => g,
+        }
+    };
+    let idle = |g: Gateway, mode| g.launch_config(&entry, mode).unwrap().idle_unload;
+    let standard = Profile::Standard.model_idle_unload();
+    assert_eq!(standard, Some(Duration::from_secs(15 * 60)));
+    assert_eq!(idle(gateway(Some(standard)), ServerMode::Chat), standard);
+    assert_eq!(
+        idle(gateway(Some(None)), ServerMode::Chat),
+        None,
+        "high: never"
+    );
+    let low = Profile::Low.model_idle_unload();
+    assert_eq!(idle(gateway(Some(low)), ServerMode::Embedding), low);
+    // Without one, the inference supervisor's own default.
+    assert_eq!(
+        idle(gateway(None), ServerMode::Chat),
+        Some(Duration::from_secs(5 * 60))
+    );
+}

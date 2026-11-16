@@ -18,4 +18,4 @@ Newest first.
 **Deferred**
 
 - Desired state, grants, schedules, app manifests and the audit index. The registry holds observed state only for now. Desired state arrives with the broker, the rest with their milestones.
-- A schema version and migrations: needed before the first release that carries real user state.
+- A schema version and migrations: needed before the first release that carries real user state. **Done since:** the Capsule format marker and its migration rule (#57, `docs/capsule-format.md`).

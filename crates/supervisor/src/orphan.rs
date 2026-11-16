@@ -5,7 +5,9 @@
 //! old database holding the data directory and the old cache answering on
 //! the socket. Each start therefore records the service's pid in its pid
 //! file; before the next engine starts the service, it stops whatever that
-//! file names, if it is still alive and still the same program.
+//! file names, if it is still alive and still the same program. When that
+//! file is gone (a cleaned run directory), the service's own pid file is
+//! read instead, so two databases never share one data directory.
 
 use std::path::{Path, PathBuf};
 
@@ -31,19 +33,31 @@ pub(crate) fn forget(config: &ServiceConfig) {
 
 /// Stop what an earlier engine left running, if anything. Returns its pid.
 pub(crate) async fn reap(config: &ServiceConfig) -> Option<u32> {
-    let path = config.pid_file.as_ref()?;
-    let pid = std::fs::read_to_string(path)
-        .ok()
-        .and_then(|text| text.trim().parse::<u32>().ok());
-    let _ = std::fs::remove_file(path);
-    let pid = pid.filter(|pid| *pid > 1)?;
-    if !alive(pid) || !same_program(pid, &config.binary_path) {
-        return None;
-    }
+    let ours = config.pid_file.as_ref().and_then(|path| {
+        let pid = first_pid(path);
+        let _ = std::fs::remove_file(path);
+        pid
+    });
+    let pid = [ours, config.own_pid_file.as_deref().and_then(first_pid)]
+        .into_iter()
+        .flatten()
+        .find(|pid| alive(*pid) && same_program(*pid, &config.binary_path))?;
     // Its own stop signal first (fast shutdown for the database), then the
     // usual grace, then a kill.
     terminate_group(pid, config.stop_signal, config.stop_grace).await;
     Some(pid)
+}
+
+/// The pid on a file's first line, if it names one.
+fn first_pid(path: &Path) -> Option<u32> {
+    std::fs::read_to_string(path)
+        .ok()?
+        .lines()
+        .next()?
+        .trim()
+        .parse::<u32>()
+        .ok()
+        .filter(|pid| *pid > 1)
 }
 
 fn alive(pid: u32) -> bool {
