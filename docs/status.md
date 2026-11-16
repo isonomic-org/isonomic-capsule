@@ -75,9 +75,37 @@ Newest first. This file is the engine's status from now on. The history of each 
 - **Same-user trust on the engine's socket.** The socket is user-only (0600, in a user-only folder), and a caller with no token is the shell. So any program running as the same user can do what the window can: read every app's data and sessions, grant apps, stop the engine. Other users on the Mac cannot. Most desktop apps share this limit. Tokens for the shell itself are planned for Milestone 4.
 - **A full disk is refused as `too_large`**, with a plain message giving the space needed and free. A code of its own waits until after version 1.
 - **Attachments are kept in memory** by the agents host and would not survive a restart. Chat's attach button is off in version 1.
+- **Until the person has an Isonomic ID, apps are held by their manifests alone.** The person's grants are checked on every data call once the ID exists (first run makes it before any app opens). Off the Mac, where no ID can be made, the manifests are all there is.
 - **The Isonomic ID's recovery key is on the same Mac** until the recovery kit exists (isonomic-id issue 14). Its seed waits in the login keychain for the kit to show it to the person, so for now it does not help if the Mac is lost. The ID never has to be made again for it.
 
 New entries go at the top of this file, naming the area; older ones move to their area's file when this one nears 20 KB. The spec stays in `isonomic-desktop/docs/architecture/`.
+
+## 2026-11-16 · Identity: every app data call goes through the check (R7, step 4)
+
+- **The broker asks the identity service about every call an app makes**, after the manifest's own checks (`proto::auth`) and before the call runs. A call becomes an action on a resource (`identity::check`):
+  - `blobs.get` and `blobs.info` read the app's space; the other blob calls write it;
+  - `sql.query` and `sql.subscribe` read the schema they run in; `sql.execute` and `sql.batch` write it;
+  - `events.subscribe` reads the app's events; `events.publish` writes them;
+  - agents calls that only look read the app's space; the rest write it;
+  - unsubscribing, models and the shell's own calls are not checked.
+- **Blobs and sessions are checked against their space.** Every version 1 grant covers whole spaces, so the answer is the same as for each one; they get records of their own once a grant can name one.
+- **The decision** is the identity library's own check through its `ChainCache`. Each grant the app holds is tried as its own chain, and `VersionedWorld` moves with the directory and the revocations.
+  - A denial answers `capability_denied` with the reason. An "ask first" answer is refused for now, until step 5.
+- **The warm path reads nothing from disk.** An app's ID and grants, the revocations and resource records are held in memory, and dropped on any change.
+- **Measured here** (release, 4 cores), per call:
+
+| Call | First call | Warm |
+|---|---|---|
+| `blobs.get` | 268 µs | 1.35 µs |
+| `sql.query` | 115 µs | 1.59 µs |
+| `sessions.subscribe` | 4.3 µs | 1.29 µs |
+| `sessions.send` | 4.1 µs | 1.28 µs |
+
+  The first call per app verifies its chain once.
+- **A Capsule from before step 3 keeps working.** An app with no grants yet gets them on its first call (off the runtime, since the key store may be asked), and the call is checked after. Shown at the service and by the older-Capsule fixture, whose Chat keeps working through the ID, the fill-in and the checks.
+- **A revoked grant is refused after a restart**, with the reason.
+- **Without the person's ID** (before first run's ID step, or off the Mac) the manifest's checks alone hold, as before R7. This is listed in the known limitations.
+- Conformance 31 of 31 with the check on.
 
 ## 2026-11-16 · Identity: apps get an ID and grants from the person (R7, step 3)
 

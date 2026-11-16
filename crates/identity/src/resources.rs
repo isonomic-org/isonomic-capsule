@@ -14,6 +14,7 @@
 //! may list another's schema before that app is granted, and the record is
 //! claimed by its owner's space when it is.
 
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Mutex;
 
@@ -33,6 +34,15 @@ pub mod kind {
 pub struct Resources {
     conn: Mutex<Connection>,
     owner: PrincipalId,
+    /// What has been looked up, so a warm check reads no database. Any
+    /// write clears it: resources change rarely (an approval, a schema).
+    cache: Mutex<Cache>,
+}
+
+#[derive(Default)]
+struct Cache {
+    found: HashMap<(String, String, String), ResourceId>,
+    metas: HashMap<ResourceId, ResourceMeta>,
 }
 
 fn id_from(bytes: Vec<u8>) -> Option<ResourceId> {
@@ -63,17 +73,33 @@ impl Resources {
         Ok(Self {
             conn: Mutex::new(conn),
             owner,
+            cache: Mutex::new(Cache::default()),
         })
     }
 
+    /// The connection, for a write: what was cached is forgotten.
     fn lock(&self) -> std::sync::MutexGuard<'_, Connection> {
+        *self.cache.lock().unwrap_or_else(|p| p.into_inner()) = Cache::default();
+        self.read()
+    }
+
+    fn read(&self) -> std::sync::MutexGuard<'_, Connection> {
         self.conn.lock().unwrap_or_else(|p| p.into_inner())
+    }
+
+    fn cached(&self) -> std::sync::MutexGuard<'_, Cache> {
+        self.cache.lock().unwrap_or_else(|p| p.into_inner())
     }
 
     /// The resource `kind`/`name` of `app`, if recorded.
     pub fn find(&self, app: &str, kind: &str, name: &str) -> Option<ResourceId> {
         let app = if kind == kind::SCHEMA { "" } else { app };
-        self.lock()
+        let key = (kind.to_string(), app.to_string(), name.to_string());
+        if let Some(id) = self.cached().found.get(&key) {
+            return Some(*id);
+        }
+        let id = self
+            .read()
             .query_row(
                 "SELECT id FROM id_resources WHERE kind = ?1 AND app = ?2 AND name = ?3",
                 params![kind, app, name],
@@ -82,7 +108,9 @@ impl Resources {
             .optional()
             .ok()
             .flatten()
-            .and_then(id_from)
+            .and_then(id_from)?;
+        self.cached().found.insert(key, id);
+        Some(id)
     }
 
     /// An app's space, recorded if it is not yet.
@@ -155,8 +183,11 @@ impl Resources {
 
 impl ResourceLookup for Resources {
     fn resource(&self, id: &ResourceId) -> Option<ResourceMeta> {
+        if let Some(meta) = self.cached().metas.get(id) {
+            return Some(meta.clone());
+        }
         let row = self
-            .lock()
+            .read()
             .query_row(
                 "SELECT kind, parent, collection FROM id_resources WHERE id = ?1",
                 params![id.as_bytes().to_vec()],
@@ -171,13 +202,15 @@ impl ResourceLookup for Resources {
             .optional()
             .ok()??;
         let (kind, parent, collection) = row;
-        Some(ResourceMeta {
+        let meta = ResourceMeta {
             id: *id,
             kind,
             owner: self.owner.clone(),
             parent: parent.and_then(id_from),
             collection: id_from(collection)?,
             derived_from: Vec::new(),
-        })
+        };
+        self.cached().metas.insert(*id, meta.clone());
+        Some(meta)
     }
 }
