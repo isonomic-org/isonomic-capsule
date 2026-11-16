@@ -186,7 +186,7 @@ async fn run() -> Result<(), AnyError> {
         ))),
         agents: Arc::new(host),
         models: gateway,
-        // The person's Isonomic ID, made from the Mac's key store the first
+        // The person's Isonomic ID, made from the computer's key store the first
         // time the window asks for it.
         identity: Arc::new(identity::IdentityService::new(identity::Person::new(
             paths.root(),

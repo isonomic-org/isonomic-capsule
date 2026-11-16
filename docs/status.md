@@ -22,7 +22,7 @@ New entries go at the top of this file, naming the area; older ones move to thei
 
 ## 2026-11-16 · Identity: the person's Isonomic ID at first need (R7, step 1)
 
-- New crate `identity`, on the identity library at `ID_REF` `d39a507` (frozen at version 1, never changed from here). `identity.get` (shell only, isonomic-sdk #34 at `d530e54`) answers the person's ID and whether that call made it; `identity_unavailable` carries the reason in plain words.
+- New crate `identity`, on the identity library at `ID_REF` `d39a507` (frozen at version 1, never changed from here). `identity.get` (shell only, isonomic-sdk #34, merged at `90eb83f`) answers the person's ID and whether that call made it; `identity_unavailable` carries the reason in plain words.
 - **What is made, the first time the window asks:**
   - a P-256 signing key and a P-256 device rotation key, from the Mac key store: in the secure chip when the build may use it, else the login keychain, which an unsigned build always gets;
   - the recovery kit's 32-byte seed, kept in the login keychain. The recovery key is derived from it as the kit will derive it (the seed is the Ed25519 private key, RFC 8032) and committed in the first entry, since a key log never lets a recovery key be added later.
@@ -30,7 +30,7 @@ New entries go at the top of this file, naming the area; older ones move to thei
 - **Every item is labelled for its Capsule** by a new `capsule_id` in `capsule.json`, made once and kept.
 - **Order:** the seed is kept before anything commits to it, and the keys before the log names them. The log file is written whole and renamed into place. After a crash part-way, the next attempt uses what was kept.
 - **Later calls read the Capsule's file and never touch the key store.** The key store is opened only to make an ID.
-- **Off the Mac** (Linux, in CI and development), `identity.get` answers "Isonomic IDs are made with a Mac's key store, and this computer has none." Tests give the engine the identity library's in-memory store.
+- **Off the Mac** (Linux, in CI and development), `identity.get` answers "Isonomic IDs are made with your computer's key store, and this computer has none Isonomic can use." Tests give the engine the identity library's in-memory store.
 - **Checked:**
   - the ID is made once and read back by a later engine without the key store;
   - the log commits a device rotation key and the recovery key of the kept seed;

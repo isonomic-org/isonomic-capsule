@@ -1,7 +1,7 @@
 //! The person's Isonomic ID: made the first time it is asked for, then
 //! read from the Capsule.
 //!
-//! Making it takes three things from the Mac's key store, each labelled
+//! Making it takes three things from the computer's key store, each labelled
 //! for the Capsule (`capsule/<capsule id>/person/…`):
 //!
 //! - a P-256 signing key, in the secure chip when the build may use it,
@@ -43,8 +43,8 @@ pub enum IdentityError {
     #[error("{0}")]
     Unavailable(String),
     #[error(
-        "Your Mac's keychain didn't let Isonomic make your ID ({0}). \
-         If the keychain is locked, unlock it, then try again."
+        "Your computer's key store didn't let Isonomic make your ID ({0}). \
+         If it's locked, unlock it, then try again."
     )]
     KeyStore(String),
     #[error(

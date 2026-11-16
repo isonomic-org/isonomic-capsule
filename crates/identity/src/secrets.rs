@@ -1,5 +1,5 @@
 //! Where the recovery seed waits for the recovery kit: a small secret,
-//! labelled for its Capsule, that never leaves the Mac's keychain except
+//! labelled for its Capsule, that never leaves the key store except
 //! to be shown to the person once the kit exists.
 
 use std::collections::HashMap;
