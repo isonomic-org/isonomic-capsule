@@ -231,7 +231,15 @@ impl EngineAgents {
                 }
                 done(host.continue_reply(who, &r.session).await)?
             }
-            Call::SessionsCancel(r) => done(host.cancel(who, &r.session).await)?,
+            Call::SessionsCancel(r) => {
+                let stopped = host.cancel(who, &r.session).await;
+                // The reply's own stop flag is set: wake it, so it drops
+                // its request now and frees the model server's slot.
+                if let Some(gateway) = &self.gateway {
+                    gateway.reply_stopped();
+                }
+                done(stopped)?
+            }
             Call::SessionsPurge(p) => {
                 // `proto::auth` lets only the shell name another app, and
                 // refuses the shell's unnamed purge.

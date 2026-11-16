@@ -7,7 +7,7 @@
 //! an app reaches the host only through its own sessions.
 
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use futures_util::StreamExt;
 use gateway::Gateway;
@@ -26,6 +26,8 @@ pub struct GatewayModel {
     /// How long a title waits after its turn before it is sent; `None`
     /// sends it at once and never yields (the hermetic tests' default).
     title_quiet: Option<Duration>,
+    /// When the last reply was stopped, so the next one finds its slot.
+    settle: Arc<crate::settle::Settle>,
 }
 
 /// Whether `req` is the harness's title step. Its request carries no
@@ -47,6 +49,7 @@ impl GatewayModel {
         Self {
             gateway,
             title_quiet: None,
+            settle: Arc::default(),
         }
     }
 
@@ -185,6 +188,7 @@ impl ModelClient for GatewayModel {
         cancel: CancelToken,
     ) -> BoxStream<'static, Result<ModelEvent, ErrorInfo>> {
         let gateway = Arc::clone(&self.gateway);
+        let settle = Arc::clone(&self.settle);
         let (tx, rx) = mpsc::channel(64);
         let model = match self.resolve(&req.model) {
             Ok(model) => model,
@@ -201,6 +205,8 @@ impl ModelClient for GatewayModel {
             // A title waits for quiet, and yields to the person's next turn.
             let mut person = gateway.foreground();
             person.borrow_and_update();
+            let mut stops = gateway.stops();
+            stops.borrow_and_update();
             if let Some(quiet) = quiet {
                 let waiting = format!("title: waiting {} ms for quiet", quiet.as_millis());
                 capsule_core::log::line(&waiting);
@@ -216,6 +222,10 @@ impl ModelClient for GatewayModel {
                     return;
                 }
                 capsule_core::log::line("title: sent");
+            } else {
+                // A reply right after a stop waits for the stopped reply's
+                // slot, which holds the conversation, to be freed.
+                settle.settle().await;
             }
             let opened = tokio::select! {
                 opened = gateway.chat(Caller::Shell, request) => opened,
@@ -236,9 +246,20 @@ impl ModelClient for GatewayModel {
             // The server streams about one token per chunk and reports no
             // usage through the provider, so chunks stand in for tokens.
             let mut chunks: u64 = 0;
+            // How far apart the last two chunks came, for `settle`.
+            let (mut last, mut gap): (Option<Instant>, Option<Duration>) = (None, None);
             loop {
                 let item = tokio::select! {
                     item = stream.next() => item,
+                    // The person stopped a reply: if it is this one, drop
+                    // its request now, not at its next token.
+                    _ = stops.changed() => {
+                        if cancel.is_cancelled() {
+                            settle.stopped(gap);
+                            return;
+                        }
+                        continue;
+                    }
                     // Dropping the stream drops the request: the model
                     // server stops writing the title.
                     _ = person.changed(), if quiet.is_some() => {
@@ -248,7 +269,11 @@ impl ModelClient for GatewayModel {
                     }
                 };
                 let Some(item) = item else { break };
+                let now = Instant::now();
+                gap = last.map(|l| now - l).or(gap);
+                last = Some(now);
                 if cancel.is_cancelled() {
+                    settle.stopped(gap);
                     return;
                 }
                 let chunk = match item {

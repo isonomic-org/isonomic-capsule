@@ -69,6 +69,9 @@ pub struct Gateway {
     /// Counts the person's turns as they begin, so a background request (a
     /// title) yields to one: see `agents::model`.
     foreground: tokio::sync::watch::Sender<u64>,
+    /// Counts the person's stops, so a reply being written drops its
+    /// request at once rather than at its next token.
+    stops: tokio::sync::watch::Sender<u64>,
     /// The llama.cpp server program; `None` when the bundle has none.
     server: Option<PathBuf>,
     gate: Arc<dyn capsule_core::RamGate>,
@@ -130,6 +133,7 @@ impl Gateway {
             catalogue: Catalogue::new(manifest, models_dir, slow),
             on_worker: Box::new(|_, _| {}),
             foreground: tokio::sync::watch::Sender::new(0),
+            stops: tokio::sync::watch::Sender::new(0),
             server,
             gate,
             configure: Box::new(|_| {}),
@@ -180,6 +184,16 @@ impl Gateway {
     /// Changes each time a person's turn begins.
     pub fn foreground(&self) -> tokio::sync::watch::Receiver<u64> {
         self.foreground.subscribe()
+    }
+
+    /// The person stopped a reply.
+    pub fn reply_stopped(&self) {
+        self.stops.send_modify(|n| *n = n.wrapping_add(1));
+    }
+
+    /// Changes each time the person stops a reply.
+    pub fn stops(&self) -> tokio::sync::watch::Receiver<u64> {
+        self.stops.subscribe()
     }
 
     /// Who is told of each new model worker.
