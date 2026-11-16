@@ -136,7 +136,18 @@ impl Gateway {
                         crate::downloads::already_installed(entry)
                     } else {
                         let dir = self.catalogue().dir().to_path_buf();
-                        self.downloads.start(entry, (self.source)(entry), dir)
+                        let spec = (self.source)(entry);
+                        // A download already running has its room.
+                        if self.downloads.received(&d.model).is_none() {
+                            let left = entry
+                                .meta
+                                .size_bytes
+                                .saturating_sub(crate::fetch::part_len(&dir, &spec));
+                            let name = entry.meta.name.as_str();
+                            crate::disk::check(self.disk.as_ref(), &dir, name, left)?;
+                        }
+                        self.downloads
+                            .start(entry, spec, dir, std::sync::Arc::clone(&self.stall))
                     };
                     return Ok(ModelsAnswer::Download {
                         model: d.model,

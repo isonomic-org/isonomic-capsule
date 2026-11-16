@@ -2,6 +2,17 @@
 
 Newest first. Every deviation and deferral is recorded here.
 
+## 2026-11-15 · Engine core: the memory gate reads macOS as macOS counts memory
+
+- Found on the 16 GB Intel Mac in ordinary use: the gate refused Qwen3.5 2B and even the 0.5 GB model, twice in four runs. It read 1.0 to 1.6 GB available while the Mac had about 160 MB free but 5.5 GB of inactive pages, which macOS hands out on demand, and its pressure was normal. On top of that it added a fixed 2 GB headroom, more than the models themselves.
+- **Reading (`capsule_core::memory`):** on macOS, available is now free plus inactive plus speculative pages from the kernel's own VM statistics (`host_statistics64`). Purgeable pages are not added, because they already sit in the active or inactive queues. The system's pressure level is read too (`kern.memorystatus_vm_pressure_level`). Other systems keep their own "available" figure.
+- **Gate (ported; changed with the orchestrator's go-ahead):**
+  - Headroom grows with the model: half its size, and never under 512 MiB.
+  - Critical pressure refuses whatever the counts say; a warning alone does not.
+  - The refusals say in plain words what to do: close some apps or browser tabs and try again, or choose a smaller model. The amounts are given in GB. The remote provider is no longer suggested (V1 is local only).
+- **Tests:** the Mac's exact page counts now admit both models; the earlier figures still refuse the 2B model in plain words; the pressure cases; the headroom rule. The ported tests are kept and adapted. Cross-checked for both Mac targets with clippy.
+- To see what the gate sees on a machine: `cargo run -q -p capsule-core --example memory_check`.
+
 ## 2026-11-15 (later) · A second engine, quoted paths, left-behind services (isonomic-capsule PRs #21 to #23)
 
 - A second engine for the same Capsule exits 0 instead of failing (#21), so the login agent doesn't restart a duplicate in a loop.

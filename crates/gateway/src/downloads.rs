@@ -1,9 +1,10 @@
 //! Model downloads (isonomic-sdk #26): the engine owns each one, so any
 //! window can follow it, leave, and attach again.
 //!
-//! A download runs in the engine with the model library's checksum-checked
-//! downloader: the file arrives as `<name>.part`, is verified, then renamed
-//! into the model directory, so a model is only ever installed whole. The
+//! A download runs in the engine (`crate::fetch`): the file arrives as
+//! `<name>.part`, continues from there after a quit, sleep or lost
+//! connection, and is renamed into the model directory only once its
+//! checksum matches, so a model is only ever installed whole. The
 //! latest progress sits in a watch channel. A follower is sent where the
 //! download stands at once, then every change, and the event with an
 //! `outcome` is the last. Cancel takes the model, since several windows may
@@ -13,7 +14,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use broker::agents::Starter;
-use isonomic_model_library::{ensure_model_with, DownloadProgress as Step, ModelEntry};
+use isonomic_model_library::ModelEntry;
 use isonomic_proto::models::{DownloadOutcome, DownloadProgress};
 use isonomic_proto::{ErrorCode, Event, ServerMessage, WireError};
 use tokio::sync::{mpsc, watch};
@@ -96,6 +97,7 @@ impl Downloads {
         entry: &ModelEntry,
         spec: isonomic_model_library::ModelSpec,
         dir: std::path::PathBuf,
+        stall: crate::fetch::Stall,
     ) -> (Option<u64>, Starter) {
         let model = entry.meta.id.as_str().to_string();
         let known = Some(entry.meta.size_bytes).filter(|s| *s > 0);
@@ -107,25 +109,19 @@ impl Downloads {
                 follow(Some(now), Some(r.progress.subscribe())),
             );
         }
-        let (tx, rx) = watch::channel(progress(&model, 0, known));
+        let already = crate::fetch::part_len(&dir, &spec);
+        let (tx, rx) = watch::channel(progress(&model, already, known));
         let client = self.client.clone();
         let all = Arc::clone(&self.running);
         let updates = tx.clone();
         let id = model.clone();
         let task = tokio::spawn(async move {
             let mut total = known;
-            let result = ensure_model_with(&client, &spec, &dir, |step| match step {
-                Step::Started { total_bytes } | Step::Received { total_bytes, .. }
-                    if total_bytes > 0 =>
-                {
-                    total = Some(total_bytes);
-                    if let Step::Received { bytes, .. } = step {
-                        updates.send_replace(progress(&id, bytes, total));
-                    }
-                }
-                _ => {}
-            })
-            .await;
+            let mut report = |bytes: u64, of: Option<u64>| {
+                total = of.or(total);
+                updates.send_replace(progress(&id, bytes, total));
+            };
+            let result = crate::fetch::fetch(&client, &spec, &dir, &stall, &mut report).await;
             let received = updates.borrow().received_bytes;
             let last = match result {
                 Ok(_) => finished(

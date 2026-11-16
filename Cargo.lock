@@ -525,11 +525,13 @@ dependencies = [
  "isonomic-model-library",
  "isonomic-proto",
  "isonomic-provider",
+ "libc",
  "registry",
  "reqwest",
  "sha2 0.10.9",
  "supervisor",
  "tempfile",
+ "thiserror",
  "tokio",
 ]
 

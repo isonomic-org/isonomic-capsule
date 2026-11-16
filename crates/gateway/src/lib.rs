@@ -11,7 +11,9 @@
 
 mod catalogue;
 mod chat_worker;
+mod disk;
 mod downloads;
+pub mod fetch;
 mod service;
 
 use std::collections::HashMap;
@@ -28,6 +30,7 @@ use isonomic_provider::{ChatStream, GatewayError, InferenceProvider, LocalLlama}
 
 pub use catalogue::{Catalogue, SLOW_CHAT_MODEL};
 pub use chat_worker::{CHAT_SAMPLING, CHAT_SLOTS, SLOT_CONTEXT};
+pub use disk::{DiskSpace, FixedDisk, SystemDisk, DISK_HEADROOM};
 
 /// No local model runs on less memory than this: 16 GiB.
 pub const MEMORY_FLOOR: u64 = 16 << 30;
@@ -66,6 +69,8 @@ pub struct Gateway {
     downloads: downloads::Downloads,
     machine: Machine,
     source: Source,
+    disk: Arc<dyn DiskSpace>,
+    stall: fetch::Stall,
 }
 
 /// The engine's memory gate, as the inference supervisor asks for it.
@@ -119,11 +124,25 @@ impl Gateway {
             downloads: downloads::Downloads::default(),
             machine: Machine::default(),
             source: Box::new(ModelEntry::spec),
+            disk: Arc::new(SystemDisk),
+            stall: fetch::stall_limit(),
         }
     }
 
     pub fn with_source(mut self, source: Source) -> Self {
         self.source = source;
+        self
+    }
+
+    /// Where the free disk space before a download is read.
+    pub fn with_disk(mut self, disk: Arc<dyn DiskSpace>) -> Self {
+        self.disk = disk;
+        self
+    }
+
+    /// When a silent download counts as stalled (tests end it on demand).
+    pub fn with_stall(mut self, stall: fetch::Stall) -> Self {
+        self.stall = stall;
         self
     }
 
