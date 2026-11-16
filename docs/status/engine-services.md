@@ -39,7 +39,7 @@ Newest first.
 
 - Object storage: Milestone 4 (Omar, 15 Nov). Its program is 134 to 146 MB per architecture and stripping doesn't shrink it (capsule #10).
 - Local models: the model gateway.
-- From the entry below, now done: bundled binaries, profile-driven buffers and a run on macOS. Still open: one database and one role per app (Milestone 4) and hunting down a still-running orphan.
+- From the entry below, now done: bundled binaries, profile-driven buffers and a run on macOS. Still open: one database per app (Milestone 4). Each app already has its own role. A still-running orphan is stopped since #23 (`docs/status/engine-supervisor.md`).
 
 ## 2026-11-14 · PostgreSQL supervised end to end; built locally, not yet on GitHub
 
@@ -66,7 +66,7 @@ Newest first.
 - Bundled binaries: the fetch task and the pinned manifest are not ported yet, so the engine has no PostgreSQL of its own to run.
 - Profile-driven settings such as buffer sizes: Milestone 1.
 - One database and one role per app: Milestone 4.
-- An orphaned server from a crashed engine: the lock file is detected and recovery time is allowed, but a still-running orphan is not hunted down.
+- An orphaned server from a crashed engine: the lock file is detected and recovery time is allowed, but a still-running orphan is not hunted down. **Done since:** #23.
 - A run on macOS.
 
 **Not started**

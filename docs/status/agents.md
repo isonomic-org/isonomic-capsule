@@ -23,8 +23,8 @@ Newest first. The host for agent sessions (`crates/agents`), over the harness ho
 - (session, id) is checked in the adapter for `approvals.decide`, `questions.answer` and `tools.result`, since the host takes the id alone (isonomic-harness #30). The shell's purge names an app and runs as that app.
 - Conformance: **28 of 28**, the six `agents.` checks included, against the real agents host with a scripted model. End-to-end tests drive a Chat turn over the socket: the reply streams, the log replays from the store, another app's session answers `not_found`, purge is per app, stop is safe to repeat.
 - Deviations:
-  - Live deltas do not wake a subscriber in the host (isonomic-harness #32), so a stream also drains them every 40 ms.
-  - The engine binary runs the host with no model until the gateway lands: a turn ends with a readable `model_unavailable` error in the log.
+  - Live deltas do not wake a subscriber in the host (isonomic-harness #32), so a stream also drains them every 40 ms. **Done since:** streams await `next_update` (see the entry above).
+  - The engine binary runs the host with no model until the gateway lands: a turn ends with a readable `model_unavailable` error in the log. **Done since:** the gateway (#28).
   - Client tools are refused and attachments are kept in memory; V1 Chat uses neither.
   - The engine's profiles have no `intel` tier yet, so Intel Macs run under `low`, `standard` or `high` by memory.
 
@@ -33,7 +33,7 @@ Newest first. The host for agent sessions (`crates/agents`), over the harness ho
 - `EngineScopes`, the harness host's `ScopeResolver`: a capability token resolves through `broker::Apps`, exactly as the broker resolves it, to `Caller::app(id, FirstParty)`; an unknown token is `Unauthorized`. Every app the engine grants is first-party; Views and third-party code get their kinds when they arrive.
 - User-action tokens: `EngineScopes::mint(caller, approval)` when the shell reports that a person acted. Random (256 bits), single use (spent by the first check, right or wrong), bound to that caller's scope and that approval, and good for 120 s on the engine's injected clock. Kept in memory only.
 - `broker::Services.apps` is now shared (`Arc`), so the broker and the agents host resolve the same tokens. harness-host is pinned at the same URL and rev as harness-core.
-- Not yet wired: the broker has no method that mints a user-action token; that arrives with the `agents` interface (isonomic-sdk #16).
+- Not yet wired: the broker has no method that mints a user-action token; that arrives with the `agents` interface (isonomic-sdk #16). **Done since:** `approvals.user_action` (#54).
 
 ## 2026-11-15 · Agents: the session log on SQLite (preparation)
 

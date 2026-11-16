@@ -93,6 +93,6 @@ The cache build is 3.6 MB (x86_64) and 3.4 MB (arm64); the engine builds it from
 **Deferred**
 
 - Trimming the tree further (headers, unused shared files): measure in the Milestone 0 report.
-- The universal `.app` and ad-hoc signing.
+- The universal `.app` and ad-hoc signing. **Done since:** the window's release step (build 96 on the Intel Mac: both architectures, ad-hoc signed).
 
 ## 2026-11-14 · Not started

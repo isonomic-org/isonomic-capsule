@@ -37,7 +37,7 @@ Newest first. Every deviation and deferral is recorded here.
 
 **Deferred**
 
-- Model workers behind the gate, and a refusal on the wire (`insufficient_memory`): the model gateway, with the SDK's R2.
+- Model workers behind the gate, and a refusal on the wire (`insufficient_memory`): the model gateway, with the SDK's R2. **Done since:** #28.
 - The other profile rows (model idle unload, apps kept loaded) have values but no consumer yet.
 - Pausing dependents and the consumer-reported probe trigger, unchanged from below.
 
@@ -87,4 +87,4 @@ Recovery is now mostly the 1 s restart backoff plus PostgreSQL's own crash recov
 
 - Pausing dependents when a service degrades: tier 3 does not exist yet.
 - The probe trigger "immediately when a consumer reports an error": needs the broker to accept such reports.
-- The RAM gate: lands with the model gateway.
+- The RAM gate: lands with the model gateway. **Done since:** #28, and reading macOS memory in #52.
