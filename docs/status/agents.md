@@ -2,6 +2,67 @@
 
 Newest first. The host for agent sessions (`crates/agents`), over the harness host.
 
+## 2026-11-16 · Agents: after a stop, the next reply waits until the model server has ended the stopped one
+
+- **#79 did not hold on the Mac.** A continue straight after a stop still went to slot 1 and read 268 prompt tokens (2.97 s), so the cause was confirmed. No timed wait ran: the continue came later than #79's window, yet slot 0 was still busy.
+- **What the engine does now:** a reply sent within 3 s of a stop first asks the model server's own slot list (`GET /slots`, with the launch's key) until no slot is working. It asks every 20 ms, for at most 1 s (`gateway::slots`). The server then gives it the slot whose cache matches it best, which is the conversation's. The engine logs `reply: the model server's slots were free after N ms`.
+  - If a slot is still working at 1 s, the reply goes anyway, and the log says so.
+  - If the server gives no slot list, the engine waits about one token gap instead (#79's rule), and the log says why.
+- **The certain fix needs the inference repo.** That fix is to name the slot in the request (the server's `id_slot`), so a continue simply queues behind the stopped task on its own slot. But the provider builds the request body from `ChatRequest`, which is frozen and has no such field. It is a request to isonomic-inference, through the orchestrator.
+- **Checked:**
+  - against a local stand-in for the slot list: the reply waits until the stopped task has ended, it waits no longer than the limit, and a refused or missing slot list is said so, with the launch's key checked;
+  - the stop test still passes, on the fallback, since the fake model server has no slot list.
+- **The Mac check:** `turn_stages`'s stop-then-continue case now fails unless the continue lands on prompt 1's slot and evaluates fewer than 64 prompt tokens. It prints `continue: slot N (T prompt tokens); the conversation's slot is M`.
+
+## 2026-11-16 · Agents: a continue after a stop lands on the conversation's slot
+
+- **What the Mac measured:** a continue straight after a stop reached first text in about 5 s in three of five runs, and in 0.2 s in the other two.
+- **The likely cause:** the chat worker has two slots. A stopped reply's request was dropped only when its next token came, and the model server frees the slot only when it next tries to send that reply a token. A continue sent before then found the conversation's slot busy, went to the other slot, which holds no cache of the conversation, and read the whole prompt again.
+- **What the engine does now:**
+  - **The stop drops the reply's request at once.** `sessions.cancel` raises `Gateway::reply_stopped`. A reply being written wakes on it, checks its own stop flag, and lets go.
+  - **The next reply waits for the slot** (`agents::settle`). The engine remembers when a reply was stopped and how far apart its last tokens came. The next reply, a continue or a new prompt, waits until about one token gap plus 50 ms has passed since the stop, at most 600 ms, or 450 ms when fewer than two tokens came. It then finds the conversation's slot free.
+  - **The wait is logged** as `reply: waited N ms for the stopped reply's slot`.
+- **Checked:**
+  - against the fake model server: a reply being written ends at once when it is stopped, the next reply waits the settle time and the log says so, and a reply long after a stop does not wait;
+  - the settle times in a unit test.
+- **The Mac check:** `turn_stages` gains a third case: a chat whose second prompt is stopped at its first text and continued at once. It prints the engine's `reply:` lines, the model server's slot and prompt-token lines for the continue, and "continue after a stop: first text".
+
+## 2026-11-16 · Agents: the title rules now hold on the standard profile
+
+- **#77 did not hold on the Mac.** A second prompt sent at once still waited 6.4 s: the title's model request started within about 0.2 s of the turn ending, and never yielded.
+- **Why:** #77 told titles apart by the model `local:smallest`, which the preset names as its title model. But the harness uses that model only on the low profile. On the standard and high profiles, which Omar's Mac is, the title names the reply's own model. So no title matched, and none waited or yielded.
+- **The fix:** a title is told apart by the harness's own title instruction, its system prompt (`harness_log::history::TITLE_PROMPT`), whatever model it names.
+- **The engine says what each title did,** in its log:
+  - `title: waiting 2000 ms for quiet`;
+  - `title: sent`;
+  - `title: yielded before it was sent`;
+  - `title: yielded while it was being written`.
+  `turn_stages` prints these lines in its timeline. The test no longer counts the first text twice; that had made the Mac run fail on its own bookkeeping.
+- **Checked:**
+  - the adapter tests now ask for titles on the reply's own model, as the standard profile does;
+  - **new: through the whole engine on the standard profile,** a second prompt sent as soon as the first reply ends is answered in well under the quiet period, the chat gets its quick title, the model server never sees a title request, and the engine logs that the title yielded;
+  - with the title rules off, the same test fails, because the chat gets the model's title, so it does test the fix.
+
+## 2026-11-16 · Agents: a person's prompt never waits behind a title
+
+- **What the Mac measured** (`turn_stages`, the 2B model). A second prompt sent as soon as the first reply ended reached its first text after 4.8 s, the same instant the title was written. One sent after the title took 1.8 s. The cache was reused either way (25 prompt tokens evaluated on turn 2), and the check took microseconds.
+- **Why:** after turn 1 the harness writes the chat's title inside that turn, on the model's other slot, re-reading about 200 tokens. A new prompt waits for the turn, and so for the title.
+- **What the engine does now** (`GatewayModel::with_title_quiet`, on in the engine):
+  - a title request waits `TITLE_QUIET` (2 s) after its turn before it is sent;
+  - if a person's turn begins meanwhile (`sessions.send` or `sessions.continue`, through `Gateway::foreground_began`), the title ends at once with `title.yielded`;
+  - it also ends at once if the turn begins while the title is being written. Its model request is then dropped, so the model server stops it.
+  The harness then gives the chat its quick title from the first prompt, and runs the person's turn. Replies never wait.
+- **Title requests are told apart** by the harness's own title instruction, which is their system prompt (`harness_log::history::TITLE_PROMPT`). The model a title names depends on the profile: on the standard and high profiles it is the reply's own model.
+- **What the engine cannot do alone:**
+  - **cancel a prompt evaluation already running on the model server.** A batch in progress finishes first, which is why the quiet period matters most;
+  - **try the model title again after the next turn.** The harness marks a chat titled before it tries, and gives the quick title when a title step fails;
+  - **reuse the conversation slot's cache for the title.** The harness builds the title with its own system prompt, so it shares no prefix with the conversation.
+  These are requests to the harness, filed through the orchestrator.
+- **Checked:**
+  - on tokio's paused clock: a title that meets a turn in its quiet period yields unsent, one that meets none is sent after the period, and a reply is sent at once;
+  - against the fake model server: a title being written yields the moment a turn begins.
+- **The Mac check:** `turn_stages` now fails if the second prompt sent at once reaches its first text later than one and a half times the after-title case plus a second. The engine's title rules are on in it.
+
 ## 2026-11-16 · Agents: harness `ae4f1a7`, chat preset version 3
 
 - Pins: isonomic-sdk `99630cc`, harness `ae4f1a7`.

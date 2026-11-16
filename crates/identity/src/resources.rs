@@ -91,6 +91,11 @@ impl Resources {
         self.cache.lock().unwrap_or_else(|p| p.into_inner())
     }
 
+    /// Whom every resource here belongs to.
+    pub fn owner(&self) -> &PrincipalId {
+        &self.owner
+    }
+
     /// The resource `kind`/`name` of `app`, if recorded.
     pub fn find(&self, app: &str, kind: &str, name: &str) -> Option<ResourceId> {
         let app = if kind == kind::SCHEMA { "" } else { app };

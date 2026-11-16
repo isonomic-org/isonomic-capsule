@@ -10,15 +10,17 @@ pub mod apps;
 pub mod check;
 pub mod directory;
 mod files;
+pub mod kit;
 mod person;
 pub mod recovery;
 pub mod resources;
 mod secrets;
 pub mod store_choice;
+pub mod words;
 pub mod world;
 
 use std::collections::{BTreeSet, HashMap};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex};
 
 use broker::agents::BoxFuture;
 use isonomic_proto::identity::Identity;
@@ -71,7 +73,8 @@ struct Inner {
     person: Person,
     apps: apps::AppIds,
     /// Opened once the person's ID exists: the person owns every resource.
-    resources: OnceLock<resources::Resources>,
+    /// Reopened if the person's ID changes (a restore from a recovery kit).
+    resources: Mutex<Option<Arc<resources::Resources>>>,
     /// Every approved app, for the grants that follow the person's ID.
     approved: Option<Arc<broker::Apps>>,
     /// Verified chains, so a warm check is a lookup.
@@ -100,7 +103,7 @@ impl IdentityService {
         Self(Arc::new(Inner {
             apps: apps::AppIds::new(person.root()),
             person,
-            resources: OnceLock::new(),
+            resources: Mutex::new(None),
             approved: None,
             chains: id_check::ChainCache::new(),
             held: Mutex::new(HashMap::new()),
@@ -130,14 +133,25 @@ impl Inner {
     fn resources(
         &self,
         owner: &id_core::PrincipalId,
-    ) -> Result<&resources::Resources, IdentityError> {
-        if let Some(r) = self.resources.get() {
-            return Ok(r);
+    ) -> Result<Arc<resources::Resources>, IdentityError> {
+        let mut kept = self.resources.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some(r) = kept.as_ref().filter(|r| r.owner() == owner) {
+            return Ok(Arc::clone(r));
         }
         let db = self.person.root().join("registry.db");
         let opened = resources::Resources::open(&db, owner.clone())
             .map_err(|e| IdentityError::Save(e.to_string()))?;
-        Ok(self.resources.get_or_init(|| opened))
+        let opened = Arc::new(opened);
+        *kept = Some(Arc::clone(&opened));
+        Ok(opened)
+    }
+
+    /// Forget everything read about apps and grants: the person's ID
+    /// changed.
+    pub(crate) fn forget(&self) {
+        self.held.lock().unwrap_or_else(|p| p.into_inner()).clear();
+        *self.revoked.lock().unwrap_or_else(|p| p.into_inner()) = None;
+        *self.resources.lock().unwrap_or_else(|p| p.into_inner()) = None;
     }
 
     fn granted(&self, manifest: &isonomic_proto::Manifest) -> Result<(), IdentityError> {
@@ -147,7 +161,7 @@ impl Inner {
             return Ok(());
         };
         let resources = self.resources(&owner)?;
-        let done = self.apps.granted(&self.person, resources, manifest);
+        let done = self.apps.granted(&self.person, &resources, manifest);
         // Whatever happened, the next check reads the grants again.
         self.held
             .lock()
@@ -210,7 +224,7 @@ impl Inner {
         let revoked = self.revoked();
         let world = world::CapsuleWorld {
             logs: self.person.logs(),
-            resources,
+            resources: &resources,
             revoked: &revoked,
         };
         let now = self.person.now();
