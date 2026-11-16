@@ -6,6 +6,7 @@
 //! Writers persist here before they notify any subscriber, so nobody woken by
 //! a notification can read a stale row.
 
+pub mod check;
 mod grants;
 
 pub use grants::{Grant, GrantStore};

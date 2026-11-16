@@ -44,6 +44,23 @@ async fn run() -> Result<(), AnyError> {
             "the engine log could not be opened: {e}; logging to standard error"
         ));
     }
+    // A damaged registry is set aside, never deleted, before anything opens
+    // it, so the engine still starts.
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    let unreadable = paths.root().join("unreadable");
+    match registry::check::check_or_set_aside(
+        &paths.registry_db(),
+        &unreadable,
+        &registry::check::stamp(now),
+    ) {
+        Ok(None) => {}
+        Ok(Some(set)) => log(set.message()),
+        Err(e) => log(format!(
+            "the registry check could not set a damaged file aside: {e}"
+        )),
+    }
     let hardware: Arc<dyn HardwareSource> = Arc::new(SystemHardware);
     // Problem reports, from here on: the Capsule was not refused.
     let reporter = problems::install(paths, &marker, hardware.probe().total_memory_bytes);

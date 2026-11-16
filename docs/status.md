@@ -12,6 +12,28 @@ Newest first. This file is the engine's status from now on. The history of each 
 - [Problem reports](status/reports.md): the engine's own reports, the log ring, the shared crate.
 - [Later modules](status/engine-later.md): reserved crates.
 
+## 2026-11-16 · Engine core and broker: a damaged registry is set aside; the socket under hostile input
+
+- **A damaged `registry.db` no longer stops the engine.** Before anything opens it, the engine runs SQLite's `quick_check` (`registry::check`). The check opens the file read-only and immutable, so it writes nothing and leaves `-wal` and `-shm` as they were.
+- **When the file fails the check,** it is moved whole, never deleted, into the Capsule's `unreadable/` folder, as `registry-<UTC stamp>.db` with its `-wal` and `-shm` beside it. The engine then starts with an empty registry and logs plainly what that means:
+  - apps must be approved again;
+  - their data in the database and their files are kept;
+  - the chats from before stay in the set-aside copy and are not shown.
+  Re-approval gives an app the same token, since tokens are derived from `token.key`.
+- **The socket under hostile input** (`crates/agents/tests/wire_fuzz.rs`). The test engine is sent:
+  - random bytes before any greeting;
+  - lengths of 0, 1, just over the limit and `u32::MAX`;
+  - a frame cut short and held open, and a connection that never greets;
+  - JSON nested 100,000 deep;
+  - 400 client requests from the SDK's frozen fixtures, mutated on four connections at once (flipped bytes, cut short, spliced junk, huge values).
+  The engine never panicked, answered at least nine in ten of the mutated requests (every frame with an intact length is answered), and a well-behaved client kept getting answers throughout. It is seeded, so every run sends the same input.
+- **Checked:**
+  - a healthy or missing registry is left alone, and the check touches nothing;
+  - a damaged one is moved aside byte for byte with its `-wal`;
+  - a path with spaces, `#` and `%` is checked where it is;
+  - stamps read as UTC;
+  - the fuzz run above.
+
 ## 2026-11-16 · Engine core and reports: the engine's own log rotates; a run of identical panics is one report
 
 - **`logs/engine.log` is written by the engine now**, through `capsule_core::log`. It is rotated past 1 MiB, keeping one previous file (`engine.log.1`), like the services' logs. Lines also go to the terminal when the engine runs in one.
