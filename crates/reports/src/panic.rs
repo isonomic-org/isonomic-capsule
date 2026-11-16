@@ -2,18 +2,16 @@
 //! with the engine's last log lines. A panic in a task the runtime catches
 //! is reported too: it is still a fault in the engine.
 //!
-//! [`frames`] and [`short_path`] are the window's (isonomic-desktop
-//! `crates/reports/src/panic.rs`), copied so both backtraces read alike.
-//! REPLACE WITH THE SDK'S SHARED CRATE with the scrubber.
+//! Backtraces are read as the window reads its own, by the shared crate's
+//! `backtrace` module.
 
 use std::panic::PanicHookInfo;
 use std::sync::Arc;
 
+use isonomic_reports::backtrace::{frames, short_path};
+
 use crate::reporter::Reporter;
 use crate::{Component, Kind, Report};
-
-/// Backtraces are cut to this many frames.
-pub const FRAMES: usize = 40;
 
 /// Install the hook. The default hook still runs after it.
 pub fn install(reporter: Arc<Reporter>) {
@@ -40,66 +38,11 @@ fn from_panic(info: &PanicHookInfo<'_>) -> Report {
     report
 }
 
-/// The backtrace as function names and crate-relative locations.
-pub fn frames(text: &str) -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
-    for raw in text.lines() {
-        let line = raw.trim();
-        if let Some(at) = line.strip_prefix("at ") {
-            if let Some(last) = out.last_mut() {
-                last.push_str(&format!(" ({})", short_path(at)));
-            }
-        } else if let Some((number, function)) = line.split_once(": ") {
-            if number.chars().all(|c| c.is_ascii_digit()) {
-                out.push(function.to_string());
-            }
-        }
-        if out.len() >= FRAMES {
-            break;
-        }
-    }
-    out
-}
-
-/// A source path cut to its crate: `…/crates/broker/src/conn.rs:12:5`
-/// becomes `broker/src/conn.rs:12`. Never a path on disk.
-pub fn short_path(path: &str) -> String {
-    let trimmed = match path.rsplit_once(':') {
-        Some((head, col)) if col.chars().all(|c| c.is_ascii_digit()) && head.contains(':') => head,
-        _ => path,
-    };
-    match trimmed.rfind("/src/") {
-        Some(at) => {
-            let before = &trimmed[..at];
-            let krate = before.rsplit('/').next().unwrap_or(before);
-            format!("{krate}{}", &trimmed[at..])
-        }
-        None => trimmed.rsplit('/').next().unwrap_or(trimmed).to_string(),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::store::Store;
     use crate::{log, Build, System};
-
-    const TRACE: &str = "   0: std::backtrace::Backtrace::force_capture
-             at /rustc/abc/library/std/src/backtrace.rs:312:13
-   1: broker::conn::serve
-             at /Users/omar/Code/isonomic-capsule/crates/broker/src/conn.rs:70:21";
-
-    #[test]
-    fn frames_keep_functions_and_crate_relative_places_only() {
-        let frames = frames(TRACE);
-        assert_eq!(
-            frames,
-            [
-                "std::backtrace::Backtrace::force_capture (std/src/backtrace.rs:312)",
-                "broker::conn::serve (broker/src/conn.rs:70)",
-            ]
-        );
-    }
 
     #[test]
     fn the_hook_writes_a_report_with_the_engines_log_before_the_process_ends() {

@@ -1290,6 +1290,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "isonomic-reports"
+version = "0.0.1"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
 name = "isonomic-worker"
 version = "0.1.0"
 dependencies = [
@@ -1783,6 +1790,7 @@ dependencies = [
  "isonomic-inference-core",
  "isonomic-inference-testkit",
  "isonomic-llama",
+ "isonomic-reports",
  "serde_json",
  "supervisor",
  "tempfile",
