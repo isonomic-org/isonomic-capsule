@@ -94,6 +94,16 @@ fn fetch_sidecars(args: &[String]) -> Result<(), String> {
             }
         }
     }
+    // The licences of what was installed, for the app bundle to carry.
+    let (notice, missing) =
+        packaging::notices::write_notice(&root, &manifest).map_err(|e| e.to_string())?;
+    println!("notice: {}", notice.display());
+    if !missing.is_empty() {
+        println!(
+            "  no licence text installed yet for: {}",
+            missing.join(", ")
+        );
+    }
     if record {
         for sidecar in &mut manifest.sidecars {
             if sidecar.is_draft() && sidecar.fully_pinned() {
