@@ -1,0 +1,54 @@
+# The Capsule's data across builds
+
+A Capsule is the folder where the engine keeps everything a person has: their apps' grants, their sessions, their models. A Capsule made by one build must open in every later build; 0.9.0 to 1.0.0 is the first such step. This page says what in it is versioned, and what a change to it requires.
+
+On macOS it is `~/Library/Application Support/Isonomic/Capsule` (`ISONOMIC_CAPSULE_DIR` overrides it); on Linux, `~/.local/share/isonomic/capsule`.
+
+## The marker
+
+`capsule.json` at the root names the data format. The engine reads it before it opens anything else (`capsule_core::format::open`):
+
+| The marker says | The engine |
+|---|---|
+| nothing (no file) | Writes format 1. A Capsule from a build before markers is format 1 by definition; `created_by` is then `unknown`. |
+| this build's format | Opens it, and records itself as `last_opened_by`. |
+| an older format | Runs that format's migrations in order, then moves the marker on. There are none yet: 1 is the first format. |
+| a newer format | Refuses, in plain words, and changes nothing, so the newer build can still open it. |
+
+```json
+{
+  "format": 1,
+  "created_by": "0.9.0",
+  "last_opened_by": "1.0.0"
+}
+```
+
+## What format 1 is
+
+| Path | What | Versioned by |
+|---|---|---|
+| `capsule.json` | The marker. | itself |
+| `registry.db` | SQLite: `grants` and `tokens` (each granted app and its token's digest), `sessions` and `session_events` (agent sessions and their logs), `blobs` (apps' stored files), `services` (observed service state). | The Capsule format. Tables are made with `CREATE TABLE IF NOT EXISTS`, so a later build that changes a table's shape must bump the format and migrate. |
+| `session_events.schema` | Each logged event carries the harness's event schema revision (1 today). | The harness. Every later harness must read every revision earlier builds wrote; the fixture test below holds the engine to it. |
+| `secrets/token.key` | 32 random bytes, made on first start, user-only. Apps' tokens are derived from it, and only their digests are stored. | Never changes. Replacing it would revoke every app's token. |
+| `models/` | One file per model, named by the model library manifest's `file_name`. A model is installed when its file is there at full size. `<name>.part` is a download not yet finished; the next attempt continues it. | The manifest. A later manifest that keeps a file name reuses the file; one that renames it downloads the model again. |
+| `blobs/` | One file per blob, named by its handle; its row is in `registry.db`. | The Capsule format. |
+| `services/postgres/` | The bundled database's data (PostgreSQL 18). | The database's major version, in its own `PG_VERSION`. The engine refuses a data directory of another major version, since one cannot read another's files. Moving to a new major version needs an upgrade step written for it, and a format bump. |
+| `services/cache/` | The cache and queue service's data. | Its own. Disposable: losing it loses nothing a person made. |
+| `logs/` | `engine.log` and the services' logs. | Not versioned; read by people. |
+| `run/` | Sockets (or `/tmp/isonomic-<uid>-<hash>/` when the Capsule's path is too deep for one). | Not versioned; made at every start. |
+| `settings/` | The window's settings, such as `start-at-login-off`. | The window. |
+
+## Changing the format
+
+A change to any table's shape, to where something lives, or to what a file holds:
+
+1. Bump `CAPSULE_FORMAT` in `crates/capsule-core/src/format.rs`.
+2. Add the migration from the previous format, run by `format::open` before anything opens the data, and make it safe to run again after a crash part-way through.
+3. Write a new fixture beside the old one (`crates/agents/tests/fixtures/capsule-format-<n>/`) with the build that writes the new format, and keep the old fixture's test passing: every earlier format must still open.
+
+A new table, or a new column that older builds ignore and that has a default, is not a change of format; the older fixture's test says whether that holds.
+
+## The test
+
+`crates/agents/tests/older_capsule.rs` rebuilds the format 1 Capsule from `fixtures/capsule-format-1/` (the registry as SQL, the token key in hex, the token Chat was issued, its session) and opens it with this engine. The marker is added. Chat's old token still works without a new grant. Its session is listed with its title, its log reads back, and it takes a new message.
