@@ -20,6 +20,8 @@
 //! - the model server's own lines as they appear: which slot took the turn,
 //!   how many prompt tokens it reused from its cache and how many it
 //!   evaluated, and its timings;
+//! - the engine's own lines on each title: how long it waited for quiet,
+//!   whether it was sent, and whether it yielded to the person;
 //! - when the first text reached the app, and when the turn ended.
 //!
 //! It fails if the second prompt sent at once reaches its first text later
@@ -139,6 +141,23 @@ async fn rig(clock: Shared) -> (tempfile::TempDir, AppClient) {
         "0".repeat(64)
     ))
     .unwrap();
+    // The engine's own word on each title: waited, sent, or yielded.
+    {
+        let clock = Arc::clone(&clock);
+        tokio::spawn(async move {
+            let mut seen: Vec<String> = Vec::new();
+            loop {
+                let now = capsule_core::log::tail();
+                for line in new_lines(&seen, &now) {
+                    if line.starts_with("title:") {
+                        mark(&clock, format!("engine: {line}"));
+                    }
+                }
+                seen = now;
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        });
+    }
     // Watch the model server's log, stamping each telling line as it comes.
     let watch = Arc::clone(&clock);
     let gateway = Arc::new(
@@ -283,9 +302,6 @@ async fn where_a_turns_time_goes() {
                         match value["type"].as_str() {
                             Some("assistant") if !first => {
                                 first = true;
-                                if n == 1 {
-                                    second_first.push(sent_at.elapsed());
-                                }
                                 if n == 1 {
                                     second_first.push(sent_at.elapsed());
                                 }

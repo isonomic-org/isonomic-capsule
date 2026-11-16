@@ -28,10 +28,13 @@ pub struct GatewayModel {
     title_quiet: Option<Duration>,
 }
 
-/// The model the preset names for titles. Replies name `local:default` or
-/// a picked model, so this is how a title request is told apart: the
-/// harness's request carries no purpose.
-pub const TITLE_MODEL: &str = "local:smallest";
+/// Whether `req` is the harness's title step. Its request carries no
+/// purpose, and the model it names depends on the profile (the reply's own
+/// model on the standard and high profiles), so a title is told apart by
+/// the harness's own title instruction, which is its system prompt.
+pub fn is_title(req: &ModelRequest) -> bool {
+    req.system.trim() == harness_log::history::TITLE_PROMPT
+}
 /// The engine's quiet period before a title: a quick follow-up never meets
 /// one.
 pub const TITLE_QUIET: Duration = Duration::from_secs(2);
@@ -193,15 +196,18 @@ impl ModelClient for GatewayModel {
             }
         };
         let request = request(model, &req);
-        let quiet = self.title_quiet.filter(|_| req.model.trim() == TITLE_MODEL);
+        let quiet = self.title_quiet.filter(|_| is_title(&req));
         tokio::spawn(async move {
             // A title waits for quiet, and yields to the person's next turn.
             let mut person = gateway.foreground();
             person.borrow_and_update();
             if let Some(quiet) = quiet {
+                let waiting = format!("title: waiting {} ms for quiet", quiet.as_millis());
+                capsule_core::log::line(&waiting);
                 tokio::select! {
                     _ = tokio::time::sleep(quiet) => {}
                     _ = person.changed() => {
+                        capsule_core::log::line("title: yielded before it was sent");
                         let _ = tx.send(Err(yielded())).await;
                         return;
                     }
@@ -209,10 +215,12 @@ impl ModelClient for GatewayModel {
                 if cancel.is_cancelled() {
                     return;
                 }
+                capsule_core::log::line("title: sent");
             }
             let opened = tokio::select! {
                 opened = gateway.chat(Caller::Shell, request) => opened,
                 _ = person.changed(), if quiet.is_some() => {
+                    capsule_core::log::line("title: yielded while the server opened it");
                     let _ = tx.send(Err(yielded())).await;
                     return;
                 }
@@ -234,6 +242,7 @@ impl ModelClient for GatewayModel {
                     // Dropping the stream drops the request: the model
                     // server stops writing the title.
                     _ = person.changed(), if quiet.is_some() => {
+                        capsule_core::log::line("title: yielded while it was being written");
                         let _ = tx.send(Err(yielded())).await;
                         return;
                     }

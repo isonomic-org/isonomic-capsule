@@ -13,7 +13,7 @@ mod service;
 mod start;
 mod store;
 
-pub use model::{GatewayModel, TITLE_MODEL, TITLE_QUIET, YIELDED};
+pub use model::{is_title, GatewayModel, TITLE_QUIET, YIELDED};
 pub use scopes::{EngineScopes, USER_ACTION_TTL_SECS};
 pub use service::{EngineAgents, MAX_MODEL_NAME};
 pub use start::{start, Parts};

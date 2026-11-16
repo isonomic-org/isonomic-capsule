@@ -13,6 +13,22 @@ Newest first. This file is the engine's status from now on. The history of each 
 - [Problem reports](status/reports.md): the engine's own reports, the log ring, the shared crate.
 - [Later modules](status/engine-later.md): reserved crates.
 
+## 2026-11-16 · Agents: the title rules now hold on the standard profile
+
+- **#77 did not hold on the Mac.** A second prompt sent at once still waited 6.4 s: the title's model request started within about 0.2 s of the turn ending, and never yielded.
+- **Why:** #77 told titles apart by the model `local:smallest`, which the preset names as its title model. But the harness uses that model only on the low profile. On the standard and high profiles, which Omar's Mac is, the title names the reply's own model. So no title matched, and none waited or yielded.
+- **The fix:** a title is told apart by the harness's own title instruction, its system prompt (`harness_log::history::TITLE_PROMPT`), whatever model it names.
+- **The engine says what each title did,** in its log:
+  - `title: waiting 2000 ms for quiet`;
+  - `title: sent`;
+  - `title: yielded before it was sent`;
+  - `title: yielded while it was being written`.
+  `turn_stages` prints these lines in its timeline. The test no longer counts the first text twice; that had made the Mac run fail on its own bookkeeping.
+- **Checked:**
+  - the adapter tests now ask for titles on the reply's own model, as the standard profile does;
+  - **new: through the whole engine on the standard profile,** a second prompt sent as soon as the first reply ends is answered in well under the quiet period, the chat gets its quick title, the model server never sees a title request, and the engine logs that the title yielded;
+  - with the title rules off, the same test fails, because the chat gets the model's title, so it does test the fix.
+
 ## 2026-11-16 · Agents: a person's prompt never waits behind a title
 
 - **What the Mac measured** (`turn_stages`, the 2B model). A second prompt sent as soon as the first reply ended reached its first text after 4.8 s, the same instant the title was written. One sent after the title took 1.8 s. The cache was reused either way (25 prompt tokens evaluated on turn 2), and the check took microseconds.
@@ -22,7 +38,7 @@ Newest first. This file is the engine's status from now on. The history of each 
   - if a person's turn begins meanwhile (`sessions.send` or `sessions.continue`, through `Gateway::foreground_began`), the title ends at once with `title.yielded`;
   - it also ends at once if the turn begins while the title is being written. Its model request is then dropped, so the model server stops it.
   The harness then gives the chat its quick title from the first prompt, and runs the person's turn. Replies never wait.
-- **Title requests are told apart** by the model the preset names for them, `local:smallest`. The harness's request carries no purpose.
+- **Title requests are told apart** by the harness's own title instruction, which is their system prompt (`harness_log::history::TITLE_PROMPT`). The model a title names depends on the profile: on the standard and high profiles it is the reply's own model.
 - **What the engine cannot do alone:**
   - **cancel a prompt evaluation already running on the model server.** A batch in progress finishes first, which is why the quiet period matters most;
   - **try the model title again after the next turn.** The harness marks a chat titled before it tries, and gives the quick title when a title step fails;

@@ -9,12 +9,13 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use agents::{GatewayModel, TITLE_MODEL, YIELDED};
+use agents::{GatewayModel, YIELDED};
 use capsule_core::{RamDenial, RamGate};
 use gateway::Gateway;
 use harness_core::future::BoxStream;
 use harness_core::ErrorInfo;
 use harness_host::{CancelToken, ModelClient};
+use harness_log::history::TITLE_PROMPT;
 use harness_log::{ModelEvent, ModelRequest};
 use isonomic_inference_testkit::{write_script, FakeModelServer};
 use isonomic_model_library::Manifest;
@@ -35,11 +36,22 @@ fn catalogue() -> Manifest {
     .unwrap()
 }
 
-fn request(model: &str) -> ModelRequest {
+/// A title, as the harness asks for one on the standard profile: the
+/// reply's own model, its title instruction as the system prompt.
+fn title() -> ModelRequest {
+    request(TITLE_PROMPT)
+}
+
+/// A reply, on the same model.
+fn reply() -> ModelRequest {
+    request("You are a helpful assistant.")
+}
+
+fn request(system: &str) -> ModelRequest {
     serde_json::from_value(serde_json::json!({
-        "model": model,
+        "model": "local:default",
         "params": {"max_output_tokens": 64, "reasoning": "off"},
-        "system": "Name this conversation.",
+        "system": system,
         "messages": [{"role": "user", "content": [{"type": "text", "text": "Plan a day in Lisbon"}]}]
     }))
     .unwrap()
@@ -73,7 +85,7 @@ const QUIET: Duration = Duration::from_secs(2);
 async fn a_title_that_meets_a_turn_in_its_quiet_period_yields_unsent() {
     let (_dir, gateway) = bare();
     let model = GatewayModel::new(Arc::clone(&gateway)).with_title_quiet(QUIET);
-    let mut title = model.stream(request(TITLE_MODEL), CancelToken::default());
+    let mut title = model.stream(title(), CancelToken::default());
     tokio::time::sleep(QUIET / 2).await;
     gateway.foreground_began();
     let first = next(&mut title).await.unwrap().unwrap_err();
@@ -85,7 +97,7 @@ async fn a_title_is_sent_only_after_the_quiet_period_and_a_reply_at_once() {
     let (_dir, gateway) = bare();
     let model = GatewayModel::new(Arc::clone(&gateway)).with_title_quiet(QUIET);
     let started = tokio::time::Instant::now();
-    let mut title = model.stream(request(TITLE_MODEL), CancelToken::default());
+    let mut title = model.stream(title(), CancelToken::default());
     let sent = next(&mut title).await.unwrap().unwrap_err();
     assert_ne!(sent.code, YIELDED, "{sent:?}");
     assert!(sent.message.contains("not installed"), "{sent:?}");
@@ -96,7 +108,7 @@ async fn a_title_is_sent_only_after_the_quiet_period_and_a_reply_at_once() {
     );
 
     let started = tokio::time::Instant::now();
-    let mut reply = model.stream(request("local:default"), CancelToken::default());
+    let mut reply = model.stream(reply(), CancelToken::default());
     let sent = next(&mut reply).await.unwrap().unwrap_err();
     assert!(sent.message.contains("not installed"), "{sent:?}");
     assert!(
@@ -125,7 +137,7 @@ async fn a_title_being_written_yields_the_moment_a_turn_begins() {
         ),
     );
     let model = GatewayModel::new(Arc::clone(&gateway)).with_title_quiet(Duration::from_millis(10));
-    let mut title = model.stream(request(TITLE_MODEL), CancelToken::default());
+    let mut title = model.stream(title(), CancelToken::default());
     // The title is being written: its first words are out, the rest held.
     let first = tokio::time::timeout(Duration::from_secs(30), next(&mut title))
         .await
@@ -139,4 +151,71 @@ async fn a_title_being_written_yields_the_moment_a_turn_begins() {
         .unwrap();
     assert_eq!(ended.unwrap_err().code, YIELDED);
     server.release_stream();
+}
+
+mod support;
+
+/// Through the whole engine, as the Mac runs it: the standard profile's
+/// model title names the reply's own model. A second prompt sent as soon as
+/// the first reply ends is answered without waiting for any title: the
+/// title yields before it is sent, the chat gets its quick title, and the
+/// model server never sees a title request.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_second_prompt_sent_at_once_is_never_held_by_the_title() {
+    let dir = tempfile::tempdir().unwrap();
+    let server = FakeModelServer::start().await;
+    let quiet = Duration::from_secs(2);
+    let shell = support::shell_with(dir.path(), server.port(), Some(quiet)).await;
+    let chat = shell.scoped(shell.grant(support::chat_manifest()).await.unwrap());
+    let agents = chat.agents();
+    let session = agents.create("chat").await.unwrap();
+    let mut stream = agents.subscribe(&session, 0).await.unwrap();
+
+    let mut ended = 0;
+    let mut title_source = None;
+    let mut second_sent = None;
+    agents
+        .send_text(&session, "Plan a day in Lisbon")
+        .await
+        .unwrap();
+    while ended < 2 {
+        let update = tokio::time::timeout(Duration::from_secs(30), stream.next())
+            .await
+            .expect("an update")
+            .expect("the stream");
+        let isonomic_client::SessionUpdate::Event(e) = update else {
+            continue;
+        };
+        let value = serde_json::to_value(&*e).unwrap();
+        match value["type"].as_str() {
+            Some("turn.end") => {
+                ended += 1;
+                if ended == 1 {
+                    second_sent = Some(std::time::Instant::now());
+                    agents
+                        .send_text(&session, "Now a second day")
+                        .await
+                        .unwrap();
+                }
+            }
+            Some("title") => title_source = Some(value["source"].clone()),
+            _ => {}
+        }
+    }
+    let answered = second_sent.unwrap().elapsed();
+    assert!(answered < quiet, "the second prompt waited {answered:?}");
+    assert_eq!(title_source, Some(serde_json::json!("heuristic")));
+    let titles = server
+        .requests()
+        .into_iter()
+        .filter(|r| r.body.contains("Write a short title"))
+        .count();
+    assert_eq!(titles, 0, "the model server never saw the title");
+    // It was a model title that gave way, not a heuristic one from the
+    // start: the engine says what the title did.
+    let log = capsule_core::log::tail();
+    assert!(
+        log.iter().any(|l| l == "title: yielded before it was sent"),
+        "{log:?}"
+    );
 }

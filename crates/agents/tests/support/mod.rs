@@ -56,6 +56,12 @@ pub async fn engine(root: &Path, port: u16) -> AppClient {
 /// An engine on the Capsule at `root`, its token key read from the
 /// Capsule as the engine binary reads it; the shell's client.
 pub async fn shell(root: &Path, port: u16) -> Client {
+    shell_with(root, port, None).await
+}
+
+/// The same, with the engine's title rules on (`title_quiet`), as the
+/// engine binary runs them.
+pub async fn shell_with(root: &Path, port: u16, title_quiet: Option<Duration>) -> Client {
     let paths = CapsulePaths::new(root);
     let models = root.join("models");
     std::fs::create_dir_all(&models).unwrap();
@@ -77,7 +83,10 @@ pub async fn shell(root: &Path, port: u16) -> Client {
     let host = agents::start(Parts {
         store: Arc::new(SqliteSessionStore::open(&paths.registry_db()).unwrap()),
         scopes: Arc::new(EngineScopes::new(Arc::clone(&apps), Arc::new(SystemClock))),
-        model: Arc::new(GatewayModel::new(Arc::clone(&gateway))),
+        model: Arc::new(match title_quiet {
+            Some(quiet) => GatewayModel::new(Arc::clone(&gateway)).with_title_quiet(quiet),
+            None => GatewayModel::new(Arc::clone(&gateway)),
+        }),
         locale: EngineLocale {
             zone: "UTC".into(),
             offset_minutes: 0,
