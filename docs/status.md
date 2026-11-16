@@ -13,6 +13,19 @@ Newest first. This file is the engine's status from now on. The history of each 
 - [Problem reports](status/reports.md): the engine's own reports, the log ring, the shared crate.
 - [Later modules](status/engine-later.md): reserved crates.
 
+## 2026-11-16 · Agents: a continue after a stop lands on the conversation's slot
+
+- **What the Mac measured:** a continue straight after a stop reached first text in about 5 s in three of five runs, and in 0.2 s in the other two.
+- **The likely cause:** the chat worker has two slots. A stopped reply's request was dropped only when its next token came, and the model server frees the slot only when it next tries to send that reply a token. A continue sent before then found the conversation's slot busy, went to the other slot, which holds no cache of the conversation, and read the whole prompt again.
+- **What the engine does now:**
+  - **The stop drops the reply's request at once.** `sessions.cancel` raises `Gateway::reply_stopped`. A reply being written wakes on it, checks its own stop flag, and lets go.
+  - **The next reply waits for the slot** (`agents::settle`). The engine remembers when a reply was stopped and how far apart its last tokens came. The next reply, a continue or a new prompt, waits until about one token gap plus 50 ms has passed since the stop, at most 600 ms, or 450 ms when fewer than two tokens came. It then finds the conversation's slot free.
+  - **The wait is logged** as `reply: waited N ms for the stopped reply's slot`.
+- **Checked:**
+  - against the fake model server: a reply being written ends at once when it is stopped, the next reply waits the settle time and the log says so, and a reply long after a stop does not wait;
+  - the settle times in a unit test.
+- **The Mac check:** `turn_stages` gains a third case: a chat whose second prompt is stopped at its first text and continued at once. It prints the engine's `reply:` lines, the model server's slot and prompt-token lines for the continue, and "continue after a stop: first text".
+
 ## 2026-11-16 · Agents: the title rules now hold on the standard profile
 
 - **#77 did not hold on the Mac.** A second prompt sent at once still waited 6.4 s: the title's model request started within about 0.2 s of the turn ending, and never yielded.

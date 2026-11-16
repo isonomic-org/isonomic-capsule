@@ -24,6 +24,10 @@
 //!   whether it was sent, and whether it yielded to the person;
 //! - when the first text reached the app, and when the turn ended.
 //!
+//! A third chat stops its second prompt at the first text and continues at
+//! once, as the self-check does, and prints the slot the continue took and
+//! how many prompt tokens it read, with the engine's `reply:` lines.
+//!
 //! It fails if the second prompt sent at once reaches its first text later
 //! than one and a half times the after-title case plus a second: a person's
 //! prompt must never wait behind a title. The engine's title rules
@@ -149,7 +153,7 @@ async fn rig(clock: Shared) -> (tempfile::TempDir, AppClient) {
             loop {
                 let now = capsule_core::log::tail();
                 for line in new_lines(&seen, &now) {
-                    if line.starts_with("title:") {
+                    if line.starts_with("title:") || line.starts_with("reply:") {
                         mark(&clock, format!("engine: {line}"));
                     }
                 }
@@ -346,6 +350,76 @@ async fn where_a_turns_time_goes() {
             }
         }
     }
+    // Stop then continue, as the self-check does: the continue must land on
+    // the slot that holds the conversation.
+    println!("== stop, then continue at once");
+    let session = agents.create("chat").await.unwrap();
+    let mut stream = agents.subscribe(&session, 0).await.unwrap();
+    let mut continue_first = None;
+    for (n, step) in ["prompt 1", "prompt 2, stopped", "continue"]
+        .iter()
+        .enumerate()
+    {
+        {
+            let mut c = clock.lock().unwrap();
+            c.sent = Some(Instant::now());
+            c.marks.clear();
+        }
+        mark(&clock, format!("sent {step}"));
+        let sent_at = Instant::now();
+        match n {
+            2 => {
+                if let Err(e) = agents.continue_reply(&session).await {
+                    println!("  continue refused: {e:?}");
+                    break;
+                }
+            }
+            _ => {
+                agents.send_text(&session, PROMPTS[n]).await.unwrap();
+            }
+        }
+        let mut first = false;
+        loop {
+            let next = tokio::time::timeout(Duration::from_secs(600), stream.next()).await;
+            let update = next.expect("no update within 600 s").expect("stream ended");
+            let text = match &update {
+                SessionUpdate::Delta(_) => true,
+                SessionUpdate::Event(e) => {
+                    serde_json::to_value(&**e).unwrap()["type"] == "assistant"
+                }
+                _ => false,
+            };
+            if text && !first {
+                first = true;
+                mark(&clock, "first text reached the app".into());
+                if n == 1 {
+                    agents.cancel(&session).await.unwrap();
+                    mark(&clock, "stopped".into());
+                }
+                if n == 2 {
+                    continue_first = Some(sent_at.elapsed());
+                }
+            }
+            if let SessionUpdate::Event(e) = &update {
+                let value = serde_json::to_value(&**e).unwrap();
+                if value["type"] == "turn.end" {
+                    mark(&clock, format!("turn ended: {}", value["stop"]));
+                    break;
+                }
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        for line in clock.lock().unwrap().marks.drain(..) {
+            println!("{line}");
+        }
+    }
+    if let Some(first) = continue_first {
+        println!(
+            "continue after a stop: first text {:.2} s",
+            first.as_secs_f64()
+        );
+    }
+
     // A second prompt sent at once never waits behind the title: it reaches
     // its first text about as soon as one sent after the title does.
     let [at_once, after_title] = second_first[..] else {

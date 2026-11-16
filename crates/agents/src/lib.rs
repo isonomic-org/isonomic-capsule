@@ -10,6 +10,7 @@ pub mod deps;
 mod model;
 mod scopes;
 mod service;
+pub mod settle;
 mod start;
 mod store;
 
