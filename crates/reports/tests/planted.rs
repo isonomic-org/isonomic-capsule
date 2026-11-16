@@ -49,6 +49,8 @@ fn reports(capsule: &Path) -> Vec<Value> {
 }
 
 fn assert_clean(doc: &Value, home: &str) {
+    let id = doc["id"].as_str().expect("every report has its own id");
+    assert!(isonomic_reports::id::is_id(id), "{id}");
     let text = doc.to_string();
     for planted in ["Lisbon", "sister", TOKEN, home] {
         assert!(!text.contains(planted), "{planted:?} in {text}");
@@ -196,6 +198,7 @@ exit 1
     watch.abort();
 
     let docs = reports(capsule.path());
+    assert_ne!(docs[0]["id"], docs[1]["id"], "each report its own id");
     let messages: Vec<&str> = docs
         .iter()
         .map(|d| d["message"].as_str().unwrap())
