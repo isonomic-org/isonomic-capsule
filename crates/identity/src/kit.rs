@@ -3,10 +3,17 @@
 //! saves as a file and prints; nothing goes to a network.
 //!
 //! **The document** (`isonomic-recovery-kit`, version 1) is JSON: the ID,
-//! when it was made, the recovery seed as 24 words ([`crate::words`]), the
-//! person's key log as it stands (each signed entry in hexadecimal, as
-//! `identity/person.log` keeps it), and `check`, the SHA-256 of the
-//! document without it, so a damaged copy is refused rather than half read.
+//! when it was made, `recovery` (a short fingerprint of the recovery key,
+//! so words of another kit are told apart at once), the person's key log as
+//! it stands (each signed entry in hexadecimal, as `identity/person.log`
+//! keeps it), and `check`, the SHA-256 of the document without it, so a
+//! damaged copy is refused rather than half read.
+//!
+//! **The words are not in the document.** The recovery seed, as 24 words
+//! ([`crate::words`]), is given to the shell beside it, for the person to
+//! write down or print; restoring needs both the file and the words, so a
+//! found file alone gives nobody the ID. The words never reach the engine's
+//! log, a problem report or an error message, and `Debug` hides them.
 //!
 //! **Export** reads the seed from the key store and gives the kit to the
 //! shell only, when the person asked; the engine logs that it happened,
@@ -49,8 +56,14 @@ pub const VERSION: u64 = 1;
 pub struct Kit {
     pub id: String,
     pub made: u64,
-    pub words: Vec<String>,
+    /// The first 16 hex characters of the recovery key's fingerprint.
+    pub recovery: String,
     pub log: Vec<Signed>,
+}
+
+/// The `recovery` field for `seed`.
+pub fn fingerprint(seed: &[u8; 32]) -> String {
+    recovery_public_key(seed).fingerprint().to_hex()[..16].to_string()
 }
 
 /// Why a kit or its words were refused, in words a person can act on.
@@ -92,7 +105,7 @@ fn body(kit: &Kit) -> Value {
         "version": VERSION,
         "id": kit.id,
         "made": kit.made,
-        "words": kit.words,
+        "recovery": kit.recovery,
         "log": log,
     })
 }
@@ -145,7 +158,10 @@ impl Kit {
         let kit = Kit {
             id: doc["id"].as_str().ok_or(KitError::Damaged)?.to_string(),
             made: doc["made"].as_u64().ok_or(KitError::Damaged)?,
-            words: strings("words").unwrap_or_default(),
+            recovery: doc["recovery"]
+                .as_str()
+                .ok_or(KitError::Damaged)?
+                .to_string(),
             log,
         };
         let opened = kit.open()?;
@@ -162,31 +178,31 @@ impl Kit {
     }
 }
 
-/// The seed `words` spell, if it is the recovery key `log` commits to now.
-pub fn seed_for(log: &Log, words: &[String]) -> Result<[u8; 32], KitError> {
+/// The seed `words` spell, if it is `kit`'s and the recovery key `log`
+/// commits to now.
+pub fn seed_for(kit: &Kit, log: &Log, words: &[String]) -> Result<[u8; 32], KitError> {
     let seed = words::decode(words).map_err(|e| KitError::Words(capitalise(&e.to_string())))?;
     let fingerprint = recovery_public_key(&seed).fingerprint();
+    // An entry this key signed: the kit's key was used after the kit these
+    // words belong to was made, so they no longer restore.
+    let spent = log
+        .entries()
+        .iter()
+        .skip(1)
+        .any(|e| e.signer().fingerprint() == fingerprint);
+    if spent {
+        return Err(KitError::Spent);
+    }
     let committed = log
         .state()
         .next
         .iter()
         .filter(|c| c.role == Role::Recovery)
         .any(|c| c.key == fingerprint);
-    if committed {
-        return Ok(seed);
+    if !committed || self::fingerprint(&seed) != kit.recovery {
+        return Err(KitError::NotThisKit);
     }
-    // An entry this key signed: the kit's key was used after this kit was
-    // made, and its words no longer restore.
-    let earlier = log
-        .entries()
-        .iter()
-        .skip(1)
-        .any(|e| e.signer().fingerprint() == fingerprint);
-    Err(if earlier {
-        KitError::Spent
-    } else {
-        KitError::NotThisKit
-    })
+    Ok(seed)
 }
 
 fn capitalise(text: &str) -> String {
@@ -250,8 +266,9 @@ pub fn set_status(root: &Path, status: KitStatus) -> std::io::Result<()> {
     write_whole(&status_file(root), text.as_bytes())
 }
 
-/// A kit given to the shell: the ID, the words, and the document to save.
-#[derive(Debug, Clone)]
+/// A kit given to the shell: the ID, the words to write down, and the
+/// document to save (which does not hold them).
+#[derive(Clone)]
 pub struct Exported {
     pub id: String,
     pub words: Vec<String>,
@@ -259,13 +276,48 @@ pub struct Exported {
 }
 
 /// What a restore came to: the same ID, and the new kit that replaces the
-/// spent one; `kit_made` says when the kit that was used had been made.
-#[derive(Debug, Clone)]
+/// spent one; `kit_made` says when the kit that was used had been made, and
+/// `note` says what the person must now do.
+#[derive(Clone)]
 pub struct Restored {
     pub id: String,
     pub words: Vec<String>,
     pub document: String,
     pub kit_made: u64,
+    pub note: String,
+}
+
+/// The words never show in a debug print, so never in a panic message.
+const HIDDEN: &str = "[24 words, hidden]";
+
+impl std::fmt::Debug for Exported {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Exported")
+            .field("id", &self.id)
+            .field("words", &HIDDEN)
+            .finish_non_exhaustive()
+    }
+}
+
+impl std::fmt::Debug for Restored {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Restored")
+            .field("id", &self.id)
+            .field("words", &HIDDEN)
+            .field("kit_made", &self.kit_made)
+            .finish_non_exhaustive()
+    }
+}
+
+/// What the person reads after a restore.
+pub fn restored_note(kit_made: u64) -> String {
+    let made = registry::check::stamp(kit_made);
+    let day = format!("{}-{}-{}", &made[..4], &made[4..6], &made[6..8]);
+    format!(
+        "Your Isonomic ID is back on this Mac. The recovery kit you used (made {day}) is now \
+         spent: save the new kit, then destroy the old one. If your ID changed on the old Mac \
+         after {day}, those later changes are set aside."
+    )
 }
 
 /// Why export or restore was refused.
@@ -299,7 +351,7 @@ impl crate::IdentityService {
         let kit = Kit {
             id: log.id().to_string(),
             made: now,
-            words: words.clone(),
+            recovery: fingerprint(&seed),
             log: log.entries().to_vec(),
         };
         let mut kept = status(person.root());
@@ -325,7 +377,7 @@ impl crate::IdentityService {
         let person = &self.0.person;
         let kit = Kit::from_document(document)?;
         let log = kit.open()?;
-        let seed = seed_for(&log, words)?;
+        let seed = seed_for(&kit, &log, words)?;
         if let Some(existing) = person.peek()? {
             if existing.to_string() == kit.id || !replace_unused {
                 return Err(KitError::HasId.into());
@@ -349,7 +401,7 @@ impl crate::IdentityService {
         let new = Kit {
             id: restored.id().to_string(),
             made: now,
-            words: words.clone(),
+            recovery: fingerprint(&fresh),
             log: restored.entries().to_vec(),
         };
         let reset = KitStatus {
@@ -357,12 +409,16 @@ impl crate::IdentityService {
             saved_at: None,
         };
         set_status(person.root(), reset).map_err(|e| RecoveryError::Save(e.to_string()))?;
-        capsule_core::log::line("identity: restored from a recovery kit; that kit is now spent");
+        capsule_core::log::line(
+            "identity: restored from a recovery kit; that kit is now spent and should be \
+             destroyed once the new one is saved",
+        );
         Ok(Restored {
             id: new.id.clone(),
             words,
             document: new.to_document(),
             kit_made: kit.made,
+            note: restored_note(kit.made),
         })
     }
 

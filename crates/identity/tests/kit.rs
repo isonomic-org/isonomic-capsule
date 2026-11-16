@@ -315,3 +315,73 @@ async fn an_older_kit_still_restores_and_the_lost_macs_later_log_is_kept_apart()
     let known = log_of(&restored.document);
     assert_eq!(reopened.state(known.id()).unwrap().head, known.state().head);
 }
+
+/// Whether `text` holds any two of `words` in a row: everyday words of the
+/// list (such as "kit") appear in ordinary text, a run of them does not.
+fn leaks(text: &str, words: &[String]) -> bool {
+    let lower = text.to_lowercase();
+    words
+        .windows(2)
+        .any(|pair| lower.contains(&format!("{} {}", pair[0], pair[1])))
+        || lower.contains(&words.join(" "))
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_words_never_reach_the_file_the_log_an_error_or_a_debug_print() {
+    let old = mac();
+    old.service.get().await.unwrap();
+    let kit = old.service.kit_export(true).unwrap();
+
+    // The saved file holds no word of the seed, only its fingerprint.
+    let doc: serde_json::Value = serde_json::from_str(&kit.document).unwrap();
+    assert!(doc.get("words").is_none());
+    assert_eq!(doc["recovery"].as_str().unwrap().len(), 16);
+    for value in doc.as_object().unwrap().values() {
+        if let Some(text) = value.as_str() {
+            assert!(!kit.words.iter().any(|w| w == text), "{text}");
+        }
+    }
+    assert!(!leaks(&kit.document, &kit.words));
+
+    // Refusals never repeat what the person typed.
+    let mut typed = kit.words.clone();
+    typed[3] = "plantedmistake".into();
+    let refused = new_mac_restore(&kit.document, &typed)
+        .unwrap_err()
+        .to_string();
+    assert!(!refused.contains("plantedmistake"), "{refused}");
+    assert!(refused.contains("Word 4"), "{refused}");
+    let mut swapped = kit.words.clone();
+    swapped.swap(5, 6);
+    let refused = new_mac_restore(&kit.document, &swapped)
+        .unwrap_err()
+        .to_string();
+    assert!(!leaks(&refused, &kit.words), "{refused}");
+
+    // A restore, and what it says and keeps.
+    let new = mac();
+    let restored = new
+        .service
+        .kit_restore(&kit.document, &kit.words, false)
+        .unwrap();
+    assert!(
+        restored.note.contains("destroy the old one"),
+        "{}",
+        restored.note
+    );
+    assert!(!leaks(&restored.document, &restored.words));
+
+    // Nothing in the engine's log, and no debug print, holds either kit's
+    // words: a panic message or a problem report could carry those.
+    let log = capsule_core::log::tail().join("\n");
+    for words in [&kit.words, &restored.words] {
+        assert!(!leaks(&log, words), "{log}");
+        assert!(!leaks(&format!("{kit:?} {restored:?}"), words));
+    }
+    assert!(format!("{kit:?}").contains("hidden"));
+    assert!(log.contains("recovery kit exported"), "{log}");
+    assert!(
+        log.contains("should be destroyed once the new one is saved"),
+        "{log}"
+    );
+}

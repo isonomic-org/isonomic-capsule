@@ -22,8 +22,9 @@ pub const WORDS: usize = 24;
 pub enum WordsError {
     #[error("a recovery kit has 24 words; these are {0}")]
     Count(usize),
-    #[error("word {position} (\"{word}\") is not one of the recovery kit's words")]
-    Unknown { position: usize, word: String },
+    /// The word itself is never repeated back: it may be the person's own.
+    #[error("word {position} is not one of the recovery kit's words")]
+    Unknown { position: usize },
     #[error("these words don't add up: one may be mistyped or out of order")]
     Checksum,
 }
@@ -60,10 +61,7 @@ pub fn decode(words: &[String]) -> Result<[u8; SEED_BYTES], WordsError> {
         let word = word.trim().to_lowercase();
         let index = list
             .binary_search(&word.as_str())
-            .map_err(|_| WordsError::Unknown {
-                position: i + 1,
-                word: word.clone(),
-            })?;
+            .map_err(|_| WordsError::Unknown { position: i + 1 })?;
         bits.extend((0..11).rev().map(|b| index >> b & 1 == 1));
     }
     let byte = |chunk: &[bool]| chunk.iter().fold(0u8, |n, &b| n << 1 | u8::from(b));

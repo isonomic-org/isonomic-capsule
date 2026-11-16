@@ -17,10 +17,14 @@ Newest first. This file is the engine's status from now on. The history of each 
 
 - **The kit document** (`identity::kit`, format `isonomic-recovery-kit`, version 1) is JSON holding:
   - the ID and when the kit was made;
-  - the recovery seed as 24 words;
+  - `recovery`, a 16-character fingerprint of the recovery key;
   - the person's key log, each signed entry in hex;
   - `check`, the SHA-256 of the rest.
   A document that is not a kit, is newer, fails its check, or whose log does not verify is refused, in plain words.
+- **The words are not in the file** (the orchestrator's decision). Export gives them beside the document, for the person to write down or for the window to print. Restore needs both, so a found file alone gives nobody the ID.
+- **The words never reach** the engine's log, a problem report or an error message:
+  - a refusal names a word by its position, never by what was typed;
+  - the export and restore results' debug print hides the words.
 - **The words** (`identity::words`) use the standard 24-word encoding of 32 bytes, with an 8-bit checksum. The standard 2048-word English list is bundled (`recovery_words.txt`) and pinned by its published SHA-256, and the standard's own vectors pass. A wrong count, an unknown word, or a mistyped or swapped word is refused before any key work; case and spaces are ignored.
 - **Export** (`IdentityService::kit_export`) needs `person_asked`. It reads the seed from the key store, records `exported_at` in `identity/kit`, and logs `identity: recovery kit exported`, never the seed.
 - **Restore** (`IdentityService::kit_restore`):
@@ -28,6 +32,8 @@ Newest first. This file is the engine's status from now on. The history of each 
   - **new keys:** new device keys and a new recovery seed go in this Mac's key store, under the next generation (`identity/keys`);
   - **the entry:** one entry signed by the kit's recovery key retires every old signing key and commits the new keys. The ID does not change.
   - **the kit is spent:** a rotation key is used once, so the old kit cannot restore again from the new record. The restore returns a new kit, and `saved_at` is cleared until the person saves it.
+  - **what the person is told:** the restore's `note` says the ID is back, that the kit used (with its date) is spent, to save the new kit and then destroy the old one, and that changes the old Mac made after the kit's date are set aside. The engine logs the same, without the words.
+  - **one limit:** "spent" can be told only from the newer record. A spent kit used on yet another empty Mac still restores, making another fork, since that Mac knows nothing newer. That is why the person is told to destroy the old kit.
 - **Where a restore is allowed:**
   - on a Capsule with no ID, always;
   - on a Capsule with an unused ID (no approved app, session or stored file), only with `replace_unused`. The old ID is moved to `identity/replaced-<stamp>/`, never deleted;
@@ -40,7 +46,8 @@ Newest first. This file is the engine's status from now on. The history of each 
   - the spent kit is refused;
   - refused plainly: wrong or swapped words, another kit's words, a damaged document, not a kit, a Capsule with apps, an unused ID without `replace_unused`, and export with no ID;
   - with `replace_unused`, an unused ID is set aside;
-  - an older kit restores after a device rotation, and the lost Mac's log becomes a fork at entry 1.
+  - an older kit restores after a device rotation, and the lost Mac's log becomes a fork at entry 1;
+  - **planted words:** after export, restore and refusals, no two words of either kit in a row appear in the document, the log ring, a refusal or a debug print, and a mistyped word is never echoed.
 - **Not yet:** the wire calls (`identity.kit_export`, `kit_restore`, `kit_saved`, `kit_status`) wait for the SDK request. The broker will map these refusals to the new `recovery_refused` code.
 
 ## 2026-11-16 · Identity: approving the same app again signs nothing
