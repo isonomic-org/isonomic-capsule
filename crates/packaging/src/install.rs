@@ -21,8 +21,30 @@ pub trait Downloader {
     fn get(&self, url: &str) -> Result<Vec<u8>, String>;
 }
 
-/// Written inside an installed directory: the hash of what was downloaded.
+/// Written inside an installed directory: the hash of what was downloaded,
+/// and for a build the digest of its recipe, so a build is repeated only
+/// when its source or its options change.
 pub const STAMP: &str = ".sha256";
+
+/// Written inside an installed directory: the program's licence text, for
+/// the bundle's notice (`notices`).
+pub const LICENSE: &str = ".license";
+
+/// What an install's stamp says: the download's hash, then the recipe's
+/// digest when it is built.
+fn stamp(
+    sidecar: &crate::manifest::Sidecar,
+    target: &crate::manifest::Target,
+    sha: &str,
+) -> String {
+    match sidecar.build_for(target) {
+        Some(build) => {
+            let recipe = serde_json::to_string(&build).unwrap_or_default();
+            format!("{sha} recipe:{}", sha256_hex(recipe.as_bytes()))
+        }
+        None => sha.to_string(),
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Outcome {
@@ -57,6 +79,12 @@ pub enum InstallError {
         log: PathBuf,
         tail: String,
     },
+    #[error("{label} needs a newer macOS than {minimum}, the oldest the product supports, so it was not installed:\n{list}\nBuild it for macOS {minimum} (a deployment target), or pin a build that targets it.")]
+    TooNewMacos {
+        label: String,
+        minimum: String,
+        list: String,
+    },
     #[error("{0}: {1}")]
     Archive(String, String),
     #[error("download failed: {0}")]
@@ -87,6 +115,44 @@ pub(crate) fn verify_arch(binary: &Path, triple: &str, label: &str) -> Result<()
         }),
         None => Ok(()),
     }
+}
+
+/// Refuse, and remove, an install with any file that needs a newer macOS
+/// than the product's minimum. Non-Apple targets are not checked.
+fn verify_minimum(
+    manifest: &Manifest,
+    dest: &Path,
+    triple: &str,
+    label: &str,
+) -> Result<(), InstallError> {
+    let Some(minimum) = manifest.minimum_macos.as_deref() else {
+        return Ok(());
+    };
+    let Some(allowed) = crate::minos::MacVersion::parse(minimum) else {
+        return Ok(()); // validation refuses a bad minimum before this
+    };
+    if !triple.ends_with("apple-darwin") {
+        return Ok(());
+    }
+    let found = crate::minos::too_new(dest, allowed)?;
+    if found.is_empty() {
+        return Ok(());
+    }
+    let list = found
+        .iter()
+        .take(20)
+        .map(|f| {
+            let path = f.path.strip_prefix(dest).unwrap_or(&f.path);
+            format!("  {} ({}) needs macOS {}", path.display(), f.arch, f.needs)
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    let _ = std::fs::remove_dir_all(dest);
+    Err(InstallError::TooNewMacos {
+        label: label.to_string(),
+        minimum: minimum.to_string(),
+        list,
+    })
 }
 
 fn list_files(dir: &Path, root: &Path, out: &mut Vec<String>) {
@@ -141,10 +207,17 @@ pub fn install_one(
     }
 
     if !pinned.is_empty() {
+        let expected = stamp(&sidecar, &target, &pinned);
         let stamped = std::fs::read_to_string(dest.join(STAMP))
-            .map(|s| s.trim() == pinned)
+            .map(|s| s.trim() == expected)
             .unwrap_or(false);
-        if stamped {
+        // A tree in place that needs a newer macOS (built before the
+        // recipe targeted the minimum, say) is not current: it is removed
+        // here and installed again below.
+        // One installed before the manifest named its licence files has no
+        // licence text for the notice: it is installed again too.
+        let licensed = sidecar.license_files.is_none() || dest.join(LICENSE).is_file();
+        if stamped && licensed && verify_minimum(manifest, &dest, triple, &label).is_ok() {
             verify_arch(&dest.join(&program), triple, &label)?;
             return Ok(Outcome::AlreadyCurrent);
         }
@@ -175,7 +248,11 @@ pub fn install_one(
     let placed = crate::place::place(&sidecar, &target, triple, &label, &payload, &work, &dest);
     let _ = std::fs::remove_dir_all(&work);
     placed?;
-    std::fs::write(dest.join(STAMP), format!("{actual}\n"))?;
+    verify_minimum(manifest, &dest, triple, &label)?;
+    std::fs::write(
+        dest.join(STAMP),
+        format!("{}\n", stamp(&sidecar, &target, &actual)),
+    )?;
     verify_arch(&dest.join(&program), triple, &label)?;
     Ok(if recorded {
         Outcome::Recorded(actual)
