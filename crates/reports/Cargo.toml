@@ -14,6 +14,7 @@ supervisor.workspace = true
 tokio.workspace = true
 
 [dev-dependencies]
+isonomic-reports.workspace = true
 isonomic-inference-core.workspace = true
 isonomic-inference-testkit.workspace = true
 tempfile.workspace = true

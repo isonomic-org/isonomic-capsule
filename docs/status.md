@@ -11,6 +11,13 @@ Newest first. This file is the engine's status from now on. The history of each 
 - [Packaging](status/packaging.md): bundled services and the app bundle.
 - [Later modules](status/engine-later.md): reserved crates.
 
+## 2026-11-16 · Problem reports: each report has its own id
+
+- **`SDK_REF` moves to isonomic-sdk `4947e43`** (UI `ecd21d1`). Format 1 gains an optional top-level `id`: 32 hex characters, made when the report is.
+- **Every engine report now carries one.** The engine builds every report through `Report::new`, which makes the id. A receiver can drop duplicates by it.
+- **Older files:** a report written before ids existed gets one from `isonomic_reports::id::report_id`, derived from its file name and the Capsule's id. That is the window's part, as the sender.
+- **Checked:** the planted-content tests now also check that every report's id has the right form, and that two reports from one run differ.
+
 ## 2026-11-16 · Problem reports: on the SDK's shared crate
 
 - **`SDK_REF` moves to isonomic-sdk `fedba7d`**: the shared crate `isonomic-reports` (landed at `f1b7376`) with its follow-up (UI at `b4c9670`). It is the window's crate too. Quoted text of any length is now removed from every scrubbed field, and a person's ID becomes `[id removed]` at any length.
