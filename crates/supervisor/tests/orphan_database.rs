@@ -7,10 +7,14 @@
 //!
 //! The first engine is this test program run again as a child: it starts
 //! the database through the supervisor, says so, and is killed with
-//! SIGKILL, so nothing of it shuts down. Its database is left running in
-//! its own process group, holding the data directory. A second engine then
-//! starts on the same Capsule. It must stop the old server before it starts
-//! its own, so the data directory never has two servers.
+//! SIGKILL, so nothing of it shuts down.
+//!
+//! - Its guardian then stops the database cleanly, so the next start
+//!   needs no crash recovery.
+//! - Should the guardian be gone too, the database is left running in its
+//!   own process group, holding the data directory. A second engine on the
+//!   same Capsule must stop it before it starts its own, so the data
+//!   directory never has two servers.
 
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
@@ -66,9 +70,31 @@ fn holder(root: &Path, bin: &Path) -> Option<u32> {
         .ok()
 }
 
+/// Kill the guardian watching process group `pgid`, found by the group in
+/// its arguments (never by name alone).
+fn kill_guardian_of(pgid: u32) {
+    let out = Command::new("/bin/ps")
+        .args(["-axo", "pid=,args="])
+        .output()
+        .unwrap();
+    let wanted = format!("isonomic-service-guardian {pgid} ");
+    for line in String::from_utf8_lossy(&out.stdout).lines() {
+        let line = line.trim_start();
+        let Some((pid, args)) = line.split_once(' ') else {
+            continue;
+        };
+        if args.contains(&wanted) {
+            let pid: libc::pid_t = pid.parse().unwrap();
+            // SAFETY: a guardian this test's own engine started.
+            unsafe { libc::kill(pid, libc::SIGKILL) };
+        }
+    }
+}
+
 /// Run the first engine as a child, wait for its database, kill it, and
-/// return the database it left behind.
-fn first_engine_dies(root: &Path) -> u32 {
+/// return the database it left behind. With `and_its_guardian`, the
+/// database's guardian is killed first, leaving a real orphan.
+fn first_engine_dies(root: &Path, and_its_guardian: bool) -> u32 {
     let mut child = Command::new(std::env::current_exe().unwrap())
         .args(["--exact", "first_engine", "--ignored", "--nocapture"])
         .env(ROLE, root)
@@ -86,6 +112,9 @@ fn first_engine_dies(root: &Path) -> u32 {
             break pid.trim().parse::<u32>().unwrap();
         }
     };
+    if and_its_guardian {
+        kill_guardian_of(pid);
+    }
     // SAFETY: the child is ours; SIGKILL leaves it no chance to clean up.
     unsafe { libc::kill(child.id() as libc::pid_t, libc::SIGKILL) };
     let _ = child.wait();
@@ -112,7 +141,7 @@ async fn first_engine() {
 async fn second_engine_takes_over(drop_our_pid_file: bool) {
     let dir = tempfile::tempdir().unwrap();
     let (root, bin) = (dir.path(), bin());
-    let old = first_engine_dies(root);
+    let old = first_engine_dies(root, true);
     assert!(alive(old), "the killed engine's database is still running");
     assert_eq!(holder(root, &bin), Some(old));
     if drop_our_pid_file {
@@ -129,6 +158,33 @@ async fn second_engine_takes_over(drop_our_pid_file: bool) {
     assert!(!alive(old), "the old database was stopped");
     assert_ne!(new, old);
     assert_eq!(holder(root, &bin), Some(new), "one server holds the data");
+    stack.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs ISONOMIC_TEST_POSTGRES_BIN and a non-root user"]
+async fn a_killed_engines_guardian_stops_its_database_cleanly() {
+    let dir = tempfile::tempdir().unwrap();
+    let (root, bin) = (dir.path(), bin());
+    let old = first_engine_dies(root, false);
+    let died = Instant::now();
+    // The database's stop grace is the supervisor's; this is a safety net.
+    let deadline = died + Duration::from_secs(30);
+    while alive(old) && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    assert!(!alive(old), "the guardian stopped the database");
+    let data = layout(root, &bin).data_dir;
+    assert!(!postgres::had_unclean_shutdown(&data), "a clean shutdown");
+    println!(
+        "stopped {:.1} s after the engine died",
+        died.elapsed().as_secs_f64()
+    );
+    let stack = engine(root, &bin).await;
+    assert_eq!(
+        holder(root, &bin),
+        stack.get(postgres::NAME).unwrap().pid().await
+    );
     stack.shutdown().await;
 }
 

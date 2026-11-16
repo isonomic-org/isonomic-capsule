@@ -8,6 +8,7 @@
 pub mod cache;
 pub mod endpoint;
 pub mod env;
+mod guardian;
 pub mod health;
 pub mod logsink;
 mod monitor;

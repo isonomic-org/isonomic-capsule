@@ -25,7 +25,9 @@ pub(crate) async fn run_monitor(
 ) {
     let mut attempt: u32 = 0;
     loop {
+        let pgid = child.id().unwrap_or(0);
         let status = child.wait().await;
+        shared.stand_down(pgid);
         if shared.generation.load(Ordering::SeqCst) != generation
             || shared.stopping.load(Ordering::SeqCst)
         {
