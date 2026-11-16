@@ -13,7 +13,7 @@ Newest first. This file is the engine's status from now on. The history of each 
 
 ## 2026-11-16 · Problem reports: on the SDK's shared crate
 
-- **`SDK_REF` moves to isonomic-sdk `f1b7376`**, where the shared crate `isonomic-reports` landed (UI at `b4c9670`). It is the window's crate too.
+- **`SDK_REF` moves to isonomic-sdk `fedba7d`**: the shared crate `isonomic-reports` (landed at `f1b7376`) with its follow-up (UI at `b4c9670`). It is the window's crate too. Quoted text of any length is now removed from every scrubbed field, and a person's ID becomes `[id removed]` at any length.
 - **The engine now uses it** for the format types, the scrubber (the key rule included), backtraces and the generic log rules. The engine's own copies are deleted. `System.macos` is now `os_version`; format 1 still writes it as `macos`.
 - **What stays here:** which rules each service follows (`filter::Source::of`), the model server's prefix list (passed to `allow_listed`), the store, the reporter, the log ring, the panic hook and the watchers.
 - **Checked:**
