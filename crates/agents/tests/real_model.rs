@@ -52,7 +52,10 @@ async fn rig() -> Rig {
     let hash = "0".repeat(64);
     // The catalogue id from the file name, as the model library names it
     // (Qwen3.5-2B-Q4_K_M.gguf is qwen3.5-2b-q4-k-m).
-    let id = file.trim_end_matches(".gguf").to_lowercase().replace('_', "-");
+    let id = file
+        .trim_end_matches(".gguf")
+        .to_lowercase()
+        .replace('_', "-");
     let catalogue = Manifest::from_json(&format!(
         r#"{{"default_chat":"{id}","models":[{{"id":"{id}","name":"{id}","file_name":"{file}","source_url":"https://example.invalid/{file}","sha256":"{hash}","size_bytes":{size},"context_length":262144,"capabilities":["chat"],"license":{{"name":"Apache-2.0","commercial_use":true,"url":"https://example.invalid"}}}}]}}"#
     ))
