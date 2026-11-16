@@ -59,8 +59,13 @@ pub type Configure = Box<dyn Fn(&mut LlamaConfig) + Send + Sync>;
 /// default (https only, checksum pinned). Tests serve it from loopback.
 pub type Source = Box<dyn Fn(&ModelEntry) -> isonomic_model_library::ModelSpec + Send + Sync>;
 
+/// Told of each model worker when it is made, with its model's id: the
+/// engine watches it for problem reports.
+pub type OnWorker = Box<dyn Fn(&str, &Arc<LlamaSupervisor>) + Send + Sync>;
+
 pub struct Gateway {
     catalogue: Catalogue,
+    on_worker: OnWorker,
     /// The llama.cpp server program; `None` when the bundle has none.
     server: Option<PathBuf>,
     gate: Arc<dyn capsule_core::RamGate>,
@@ -120,6 +125,7 @@ impl Gateway {
     ) -> Self {
         Self {
             catalogue: Catalogue::new(manifest, models_dir, slow),
+            on_worker: Box::new(|_, _| {}),
             server,
             gate,
             configure: Box::new(|_| {}),
@@ -159,6 +165,12 @@ impl Gateway {
 
     pub fn with_machine(mut self, machine: Machine) -> Self {
         self.machine = machine;
+        self
+    }
+
+    /// Who is told of each new model worker.
+    pub fn with_on_worker(mut self, on_worker: OnWorker) -> Self {
+        self.on_worker = on_worker;
         self
     }
 
@@ -232,6 +244,7 @@ impl Gateway {
         };
         let gate = Arc::new(Gate(Arc::clone(&self.gate)));
         let supervisor = Arc::new(LlamaSupervisor::new(config, gate));
+        (self.on_worker)(&id, &supervisor);
         let worker = Arc::new(LocalLlama::for_model(supervisor, &entry.meta));
         workers.insert(id, Arc::clone(&worker));
         Ok(worker)

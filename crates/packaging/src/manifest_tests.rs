@@ -90,10 +90,25 @@ fn structural_rules() {
         },
         "binaryInDir only applies",
     );
-    rejects(
+    // A tree may be built from source: the build leaves the installed tree.
+    check(
         |m| m["sidecars"][0]["build"] = json!({ "command": "make", "producesPath": "x" }),
-        "install \"file\" only",
+        true,
+    )
+    .unwrap();
+    // One target's own build, in place of the sidecar's.
+    rejects(
+        |m| {
+            m["sidecars"][0]["targets"]["x86_64-apple-darwin"]["build"] =
+                json!({ "command": "make" })
+        },
+        "producesPath is required",
     );
+    rejects(
+        |m| m["minimumMacos"] = json!("thirteen"),
+        "minimumMacos must be a macOS version",
+    );
+    check(|m| m["minimumMacos"] = json!("13.3"), true).unwrap();
 }
 
 #[test]

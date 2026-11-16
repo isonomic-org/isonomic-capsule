@@ -1198,6 +1198,8 @@ dependencies = [
  "isonomic-model-library",
  "packaging",
  "registry",
+ "reports",
+ "serde_json",
  "supervisor",
  "tempfile",
  "tokio",
@@ -1771,6 +1773,20 @@ dependencies = [
  "capsule-core",
  "rusqlite",
  "tempfile",
+]
+
+[[package]]
+name = "reports"
+version = "0.9.0"
+dependencies = [
+ "capsule-core",
+ "isonomic-inference-core",
+ "isonomic-inference-testkit",
+ "isonomic-llama",
+ "serde_json",
+ "supervisor",
+ "tempfile",
+ "tokio",
 ]
 
 [[package]]

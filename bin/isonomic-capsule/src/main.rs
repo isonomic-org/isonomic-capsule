@@ -16,10 +16,13 @@ use supervisor::postgres::{self, PostgresLayout};
 use supervisor::{ChildEnv, Stack};
 use tokio::signal::unix::{signal, SignalKind};
 
+mod problems;
+
 type AnyError = Box<dyn std::error::Error + Send + Sync>;
 
+/// One line of the engine's log, kept for a panic report too.
 fn log(line: impl AsRef<str>) {
-    eprintln!("[isonomic-capsule] {}", line.as_ref());
+    reports::log::line(line.as_ref());
 }
 
 async fn run() -> Result<(), AnyError> {
@@ -36,6 +39,8 @@ async fn run() -> Result<(), AnyError> {
     ));
 
     let hardware: Arc<dyn HardwareSource> = Arc::new(SystemHardware);
+    // Problem reports, from here on: the Capsule was not refused.
+    let reporter = problems::install(paths, &marker, hardware.probe().total_memory_bytes);
     if let Some(raw) = &config.profile_override_invalid {
         log(format!(
             "{ENV_PROFILE}={raw:?} is not a profile (low, standard, high); probing instead"
@@ -53,6 +58,7 @@ async fn run() -> Result<(), AnyError> {
         }
     };
     log(format!("hardware profile: {profile} ({source})"));
+    problems::set_profile(&reporter, &profile.to_string());
 
     // Tier 0: the registry and the broker socket. Binding first refuses a
     // second engine early and lets the window watch the services start.
@@ -117,6 +123,7 @@ async fn run() -> Result<(), AnyError> {
     stack.add(postgres::NAME, Tier::T1, service);
     stack.add(cache::NAME, Tier::T1, cache_service);
     let stack = Arc::new(stack);
+    problems::watch_services(&reporter, &stack);
 
     let total_memory_bytes = hardware.probe().total_memory_bytes;
     let system = StackSystem::new(Arc::clone(&stack), Some(registry), hardware, profile);
@@ -151,7 +158,8 @@ async fn run() -> Result<(), AnyError> {
         })
         // A reader who answers after ten minutes keeps the warm model and
         // its cache on the standard profile.
-        .with_idle_unload(profile.model_idle_unload()),
+        .with_idle_unload(profile.model_idle_unload())
+        .with_on_worker(problems::on_worker(&reporter)),
     );
     // The agents host, on the gateway's models.
     let locale = agents::deps::EngineLocale::from_system();

@@ -11,6 +11,59 @@ Newest first. This file is the engine's status from now on. The history of each 
 - [Packaging](status/packaging.md): bundled services and the app bundle.
 - [Later modules](status/engine-later.md): reserved crates.
 
+## 2026-11-16 · Packaging: every bundled program's licence is in the notice, or the fetch fails
+
+- On the Mac run of `fetch-sidecars`, the model server had no licence text in `NOTICES.txt`. Its install predated `licenseFiles`, and its stamp still matched, so it was never installed again.
+- **An install without its licence text is no longer current.** When the manifest names licence files and the install has none, it is installed again. The model server's archive carries `LICENSE`.
+- **`fetch-sidecars` now fails** when any bundled program installed for this build has no licence text. This includes one whose manifest entry names no licence files. Programs installed for no target are not in the build and are not named. A release build cannot go out without every licence.
+- Checked: an install with its licence removed is named as missing, then installed again with it, after which nothing is missing; the Linux fetch passes.
+
+## 2026-11-16 · Problem reports: the engine writes its own, in the window's format 1
+
+- **New crate `reports`.** The engine writes reports into the Capsule's `reports/pending/`, named and shaped as the window's own (format 1, `<millis>-<kind>.json`), so the window lists, shows and prunes them with its own. Each is written to a `.part` file and renamed. At most 20 are kept. Nothing is sent; no wire change.
+- **Three kinds the window does not write:**
+  - `panic`: the engine's panic hook, with a crate-relative backtrace and the last 50 lines of the engine's own log (a ring kept beside standard error);
+  - `service_failed`: a bundled service's breaker trips. It names the service, its bundled version, its restarts and how it last ended (`exit code 1`, `signal 9`);
+  - `model_server_failed`: a model worker quits unexpectedly (its first crash) and when its breaker trips. It names the model, the server and its version. A deliberate stop or an idle unload is not a failure.
+- **`component`** is `engine`, `engine/<service>` or `engine/llama-server`, with its version. The engine adds `service` or `model` beside the window's fields. `tab` is always null. `pins.chat` is empty, since the engine does not know it. The build number and the engine's commit come from the release build (`ISONOMIC_BUILD`, `ISONOMIC_ENGINE_COMMIT`); without them, `dev` and empty.
+- **The services are watched from outside.** The engine follows each supervisor's published state; the supervisors and the inference worker are unchanged. The gateway tells the engine of each new model worker (`Gateway::with_on_worker`).
+- **What a report never carries.** The scrubber is a copy of the window's, marked to be replaced by the SDK's shared crate when it has one. It turns home paths into `~`, removes quoted text over 40 characters, and cuts the message at 300. It adds one rule the window lacks: a run of 24 or more key characters holding 6 or more digits becomes `[key removed]`. That covers tokens, digests and the person's ID. Service logs get harder rules first:
+  - the database keeps only `LOG`, `WARNING`, `ERROR`, `FATAL` and `PANIC` lines, as their severity and first sentence. `STATEMENT`, `DETAIL`, `CONTEXT`, `HINT`, `QUERY` and continuation lines are dropped;
+  - the model server keeps only an allow-list of prefixes (loading, the server's start, its errors), so request and slot lines are dropped;
+  - every service line loses all quoted text and is cut at 200 characters.
+- **Not set up for a refused Capsule.** The hook and watches start only after the Capsule's marker is accepted, so a Capsule from a newer build is left with no `reports/` folder.
+- **Checked:**
+  - planted content (a prompt, a statement's value, a home path and a token), printed by stand-in services that then fail through the real supervisors, reaches no report, both for the database and for the model server on a manual clock;
+  - the hook writes a report with the engine's log before the process ends;
+  - names and the keep limit match the window's;
+  - a refused Capsule gets no report.
+- **Not yet:** lines the agents host and the gateway print to standard error directly are not in the ring; only the engine's own log is.
+
+## 2026-11-16 · Packaging: every bundled file runs on macOS 13.3
+
+- **Found on the Intel Mac:** the release refused the disk image because the database said it needs macOS 26.0 (both architectures) and the cache 15.0. The model server was already 13.3.
+- **The cache** was built on the Mac with no deployment target, so it took that Mac's macOS. Its recipe now sets `MACOSX_DEPLOYMENT_TARGET=13.3` and `-mmacosx-version-min=13.3`.
+- **The database** was the vendor's prebuilt 18.4.0, whose minimum follows its build machines. Read here from the archives:
+  - 18.0.0 and 18.1.0 say 13.0 on Intel and 15.0 on Apple Silicon;
+  - 18.3.0 says 15.0 on both;
+  - 18.4.0 says 26.0 on both.
+
+  None targets 13.3 on Apple Silicon, and its tree carries OpenSSL, libxml and readline from the build machine.
+- **On the Mac, the database is now built by `fetch-sidecars` from the official 18.4 source** (hash checked against the project's published `.sha256`), for macOS 13.3:
+  - only what the engine uses: no ICU, readline, OpenSSL or XML, so it links only the system's own libraries;
+  - layout and settings as before (`--without-icu`, `initdb --locale=C --encoding=UTF8`, default page and WAL sizes), so existing Capsules open unchanged;
+  - install names rewritten relative to each file (`@loader_path`), as the vendor's were, and each file signed ad hoc;
+  - Apple Silicon cross-built from an Intel Mac (`--host=aarch64-apple-darwin`).
+
+  The developer tools (clang, bison, flex, perl) are needed. The Linux tree stays the prebuilt download.
+- **`minimumMacos: "13.3"` in `sidecars.json`.** `fetch-sidecars` reads every Mach-O file it installs, every slice, and refuses (and removes) an install that says it needs a newer macOS, naming each file, architecture and minimum. An install already in place that fails the check is built again rather than kept.
+- **The manifest takes a build per target** (the Mac's built from source, Linux's a download), and a build may produce a directory tree.
+- **Tested:** thin and universal files' minimums; a tree with one too-new library refused and removed; a tree built from source per Mac target; a stale install rebuilt; no check without a stated minimum or off the Mac. The recipe's configure options build here on Linux; the macOS steps are for the Mac.
+- **Built once, then cached:** an install's stamp holds the download's hash and, for a build, the digest of its recipe. A release build compiles the database only when its source or its options change. A clean build takes 92 s here (4 cores, Linux); on the Intel Mac, expect about 3 to 5 minutes per architecture, once.
+- **Existing Capsules open unchanged:** a data directory made by the prebuilt 18.4.0 opens under the 18.4 built from source. An app's schema and row written under the old one are read, and written to, under the new one (`crates/appdb/tests/database_build.rs`, opt-in, run here as a normal user with both builds).
+- **Licences:** each sidecar names its licence file (`licenseFiles`); `fetch-sidecars` keeps the text and refuses an archive without it, then writes `sidecars/NOTICES.txt` for the bundle to ship. What each licence asks is in [docs/third-party-notices.md](third-party-notices.md).
+- **Not changed: the product's minimum, 13.3.**
+
 ## Known limitations of version 1
 
 - **Same-user trust on the engine's socket.** The socket is user-only (0600, in a user-only folder), and a caller with no token is the shell. So any program running as the same user can do what the window can: read every app's data and sessions, grant apps, stop the engine. Other users on the Mac cannot. Most desktop apps share this limit. Tokens for the shell itself are planned for Milestone 4.
