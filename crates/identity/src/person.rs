@@ -49,6 +49,13 @@ pub enum IdentityError {
          If it's locked, unlock it, then try again."
     )]
     KeyStore(String),
+    /// The ID exists, but the key that signs for it is not in the key store
+    /// (a scratch Capsule's in-memory keys are gone after its first run).
+    #[error(
+        "Your computer's key store doesn't have the key that signs for your Isonomic ID ({0}), \
+         so Isonomic can't approve a new app with it. Nothing was changed."
+    )]
+    NoSigningKey(String),
     #[error(
         "Isonomic couldn't save your ID in its data folder ({0}). Nothing was made; try again."
     )]
@@ -107,7 +114,7 @@ impl Person {
         let backend = self.backend()?;
         let handle = KeyHandle(self.label("device-signing"));
         let key = StoredKey::open(backend.keys, handle)
-            .map_err(|e| IdentityError::KeyStore(e.to_string()))?;
+            .map_err(|e| IdentityError::NoSigningKey(e.to_string()))?;
         Ok((id, key))
     }
 
