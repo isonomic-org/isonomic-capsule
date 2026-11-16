@@ -18,7 +18,9 @@ async fn a_second_engine_exits_cleanly_while_the_first_serves() {
         .env("HOME", dir.path())
         .output()
         .unwrap();
-    let log = String::from_utf8_lossy(&second.stderr);
+    // Once the Capsule is accepted the engine writes its own log file.
+    let file = std::fs::read_to_string(dir.path().join("logs/engine.log")).unwrap_or_default();
+    let log = format!("{}{file}", String::from_utf8_lossy(&second.stderr));
     assert!(second.status.success(), "{:?}: {log}", second.status);
     assert!(log.contains("another engine is already serving"), "{log}");
     assert!(log.contains("exiting"), "{log}");

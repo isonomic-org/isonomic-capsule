@@ -38,6 +38,12 @@ async fn run() -> Result<(), AnyError> {
         marker.format, marker.created_by, marker.last_opened_by
     ));
 
+    // The engine's own log, rotated, now that the Capsule is accepted.
+    if let Err(e) = capsule_core::log::install(&paths.logs_dir()) {
+        log(format!(
+            "the engine log could not be opened: {e}; logging to standard error"
+        ));
+    }
     let hardware: Arc<dyn HardwareSource> = Arc::new(SystemHardware);
     // Problem reports, from here on: the Capsule was not refused.
     let reporter = problems::install(paths, &marker, hardware.probe().total_memory_bytes);

@@ -46,6 +46,15 @@ impl Store {
         Ok(path)
     }
 
+    /// Write `document` over the report at `path`, whole: a `.part` file
+    /// renamed into place, so the window never reads half of it.
+    pub fn replace(&self, path: &Path, document: &Value) -> std::io::Result<()> {
+        let bytes = serde_json::to_string_pretty(document).map_err(std::io::Error::other)?;
+        let part = path.with_extension("json.part");
+        std::fs::write(&part, bytes)?;
+        std::fs::rename(&part, path)
+    }
+
     /// Every kept report's path, oldest first.
     pub fn pending(&self) -> Vec<PathBuf> {
         let Ok(entries) = std::fs::read_dir(&self.dir) else {
