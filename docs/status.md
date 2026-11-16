@@ -79,6 +79,30 @@ Newest first. This file is the engine's status from now on. The history of each 
 
 New entries go at the top of this file, naming the area; older ones move to their area's file when this one nears 20 KB. The spec stays in `isonomic-desktop/docs/architecture/`.
 
+## 2026-11-16 · Identity: apps get an ID and grants from the person (R7, step 3)
+
+- The design the orchestrator approved:
+  - the person owns every resource;
+  - each app has a space;
+  - schemas and an app's events are resources, rows and topics are not;
+  - app grants never expire, and end only by revocation.
+- **On `apps.grant`, once the approval is recorded and before the reply,** the app gets:
+  - **its own key log**, kind app, naming the person as its controller, with one Ed25519 key in the key store. The log is accepted into the directory, and `identity/apps/<app>.id` names it;
+  - **its space**, its declared schemas and its events in the new `id_resources` table of `registry.db`;
+  - **grants from the person**, each a one-link chain that cannot be passed on: read and write on its space, and read on each other app's schema its manifest lists. A schema listed before its owner is granted is recorded on its own, and claimed by the owner's space when it is.
+- **A re-grant with the same capabilities keeps the grants.** A changed one revokes the old grants in `identity/revoked` first, then keeps the new ones in `identity/grants/<app>.grants`.
+- **Tokens are unchanged:** the engine finds an app's grants by the app its token stands for.
+- **Until the person has an ID, nothing is issued.** When the ID is made, every app approved before it gets its grants (`IdentityService::fill_in`). The engine also runs the fill-in in the background at start, for a Capsule whose apps were approved before grants existed. Off the Mac there are no IDs, so no grants; the manifest's checks still hold.
+- `identity::world::decide` tries each grant an app holds as its own chain, through the library's `ChainCache`: the first that allows decides, then asking a person, then denial. Step 4 uses it on every data call.
+- **Checked** with the library's own check function:
+  - an app's ID names the person, stays the same across re-grants and restarts, and its log is kept;
+  - the space grant allows read and write on the app's own schema and events, and nothing of another app's;
+  - a listed schema can be read but not written;
+  - a schema listed early is claimed by its owner;
+  - the same re-grant keeps the grants, and a changed one revokes them, so an old grant no longer works and the new ones do;
+  - the older-Capsule fixture's Chat gets its grants when the ID is made, a newly approved app gets them on approval, and Chat keeps working;
+  - conformance 31 of 31.
+
 ## 2026-11-16 · Identity: the directory of accepted logs, kept (R7, step 2)
 
 - `identity::directory::Logs` keeps every key log the engine accepts across restarts: the person's own now, and each app's and agent's from step 3 on.

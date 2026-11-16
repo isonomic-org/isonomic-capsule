@@ -212,10 +212,15 @@ pub(crate) async fn handle(stream: UnixStream, system: Arc<dyn System>, services
             Call::AppsGrant { manifest } => match services.apps.grant(&manifest) {
                 Ok(token) => {
                     services.sql.granted(&manifest);
-                    Outcome::Result(Reply::Granted {
-                        app: manifest.id,
-                        token,
-                    })
+                    // The approval is recorded; the app's ID and grants
+                    // follow it before the window hears it was granted.
+                    match services.identity.granted(&manifest).await {
+                        Ok(()) => Outcome::Result(Reply::Granted {
+                            app: manifest.id,
+                            token,
+                        }),
+                        Err(error) => Outcome::Error(error),
+                    }
                 }
                 Err(error) => Outcome::Error(error),
             },

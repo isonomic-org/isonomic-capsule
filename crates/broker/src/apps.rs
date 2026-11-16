@@ -144,6 +144,17 @@ impl Apps {
         Ok(token)
     }
 
+    /// Every approved app's manifest, for work that follows each approval
+    /// (the apps' Isonomic IDs and grants).
+    pub fn manifests(&self) -> Vec<Manifest> {
+        self.store
+            .all()
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|g| serde_json::from_str(&g.manifest).ok())
+            .collect()
+    }
+
     /// The approved manifest a token was issued for, as it stands now.
     pub fn manifest(&self, token: &Token) -> Result<Manifest, WireError> {
         let found = self

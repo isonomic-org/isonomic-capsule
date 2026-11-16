@@ -106,6 +106,21 @@ async fn a_format_one_capsule_opens_with_its_apps_and_sessions() {
     assert!(made.created && made.id.starts_with("did:iso:"), "{made:?}");
     let again = shell.identity().await.unwrap();
     assert_eq!((again.id, again.created), (made.id, false));
+
+    // Chat was approved before the ID existed: making the ID gave it its own
+    // ID and grants. An app approved now gets them with its approval.
+    let grants = |app: &str| identity::apps::AppIds::new(dir.path()).grants(app);
+    assert_eq!(grants("com.isonomic.chat").len(), 1, "Chat's space grant");
+    let mut notes = support::chat_manifest();
+    notes.id = "com.isonomic.notes".into();
+    shell.grant(notes).await.unwrap();
+    assert_eq!(grants("com.isonomic.notes").len(), 1);
+    // And Chat keeps working through all of it.
+    chat.agents()
+        .send_text(&session, "One more?")
+        .await
+        .unwrap();
+    assert_eq!(turn(&mut stream).await.1, "done");
 }
 
 /// Write the fixture from this build. Run once per format, by hand.
