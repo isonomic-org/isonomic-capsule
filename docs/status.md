@@ -12,6 +12,22 @@ Newest first. This file is the engine's status from now on. The history of each 
 - [Problem reports](status/reports.md): the engine's own reports, the log ring, the shared crate.
 - [Later modules](status/engine-later.md): reserved crates.
 
+## 2026-11-16 · Engine core and reports: the engine's own log rotates; a run of identical panics is one report
+
+- **`logs/engine.log` is written by the engine now**, through `capsule_core::log`. It is rotated past 1 MiB, keeping one previous file (`engine.log.1`), like the services' logs. Lines also go to the terminal when the engine runs in one.
+  - Lines from before the Capsule is accepted still go to standard error, so a refused Capsule gets no log written into it.
+  - Until now the login agent sent standard error straight into `engine.log` and nothing rotated it.
+  - The window's plist should point `StandardErrorPath` at `logs/engine.stderr`, which then holds only what comes before the log opens and a panic's own output. I asked isonomic-desktop for this through the orchestrator.
+- **A run of identical panics is one report.** A panic with the same message and component as a pending panic report from the last 10 minutes updates that report rather than writing another:
+  - `repeats` counts the panics after the first;
+  - `when.last_unix_secs` says when the latest was;
+  - the report keeps its `id`.
+  An engine that panics at every start is relaunched by the login agent each time, so this replaces up to 20 identical reports with one. Other kinds are never merged.
+- **Checked:**
+  - the log rotates, keeping one previous file, and reopening appends;
+  - five panics two minutes apart make one report with `repeats` 4, while a different panic, or the same one after 10 minutes, is its own report;
+  - a refused Capsule gets neither a report nor an `engine.log`.
+
 ## 2026-11-16 · Identity: a scratch Capsule keeps its keys in memory
 
 - **`ISONOMIC_KEY_STORE=memory`** makes the engine use the identity library's in-memory stores for that run. The ID, its grants and the checks all work, and nothing is written to the keychain. It is for the window's self-check, which until now left four items in the login keychain on every run: two P-256 keys, the recovery seed and Chat's key.

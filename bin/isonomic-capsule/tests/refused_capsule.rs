@@ -1,5 +1,5 @@
-//! A Capsule the engine refuses gets no problem report: the engine stops
-//! before it sets reports up, and changes nothing in the folder.
+//! A Capsule the engine refuses gets no problem report and no engine log:
+//! the engine stops before it sets either up.
 
 use std::process::Command;
 
@@ -18,4 +18,8 @@ fn a_refused_capsule_gets_no_report() {
     assert!(!engine.status.success(), "{log}");
     assert!(log.contains("newer version of Isonomic"), "{log}");
     assert!(!dir.path().join("reports").exists(), "{log}");
+    assert!(
+        !dir.path().join("logs/engine.log").exists(),
+        "the engine writes its own log only into a Capsule it accepted"
+    );
 }
