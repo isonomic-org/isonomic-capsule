@@ -39,3 +39,25 @@ On an Apple-silicon Mac, set `TRIPLE=aarch64-apple-darwin`.
 | 2020 Intel MacBook Pro (i7-8850H, 16 GB) | Qwen3.5 0.8B | — | 11.0 s (cold, one turn) | — | First run, before the load was timed apart; 11.7 s for the turn. |
 | 2020 Intel MacBook Pro (i7-8850H, 16 GB), lightly loaded | Qwen3.5 2B | 5.3 s | 1.4–2.0 s | 7.7–16.1 tok/s | Three turns; real places in every reply. Engine cold start 199 ms. |
 | Linux CI-class Xeon, 4 cores | Qwen3.5 0.8B | 5.1 s | 0.3–0.5 s | 23–28 tok/s | Real engine binary, real llama.cpp `b12387`, real model. |
+
+## Where a turn's time goes
+
+`crates/agents/tests/turn_stages.rs` follows two chats of two prompts each through the engine's own path, on the real model server with the engine's chat-worker settings:
+
+- the broker;
+- the check on every app call;
+- the agents host;
+- the gateway.
+
+In the first chat, the second prompt goes as soon as the first reply ends, while the engine may still be writing the title. In the second chat, it goes after the title. For each prompt it prints, from the moment of sending:
+
+- when the engine received `sessions.send`, and how long its check took;
+- the model server's slot and timing lines as they appear: which slot took the turn, how much of the prompt came from its cache, and how much was evaluated;
+- when the first text reached the app.
+
+It uses a scratch Capsule in a temporary folder, with the ID in the in-memory store, so nothing is written to the keychain. The model is hard-linked in, or copied if it cannot be, and only read. The model server runs in its own process group and is stopped at the end.
+
+```sh
+ISONOMIC_TEST_LLAMA_SERVER=<llama-server> ISONOMIC_TEST_MODEL=<model.gguf> \
+  cargo test --release -p agents --test turn_stages -- --ignored --nocapture
+```
