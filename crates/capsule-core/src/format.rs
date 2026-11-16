@@ -39,6 +39,12 @@ pub struct Marker {
     /// labelled for it, wherever the folder moves. Added without a format
     /// change: older builds ignore it.
     pub capsule_id: String,
+    /// A throwaway Capsule, such as the self-check's: set by whoever made
+    /// the folder (`"scratch": true`), never by the engine, and kept on
+    /// every open. Only a scratch Capsule may keep its ID's keys in memory
+    /// (`ISONOMIC_KEY_STORE=memory`), so a real one never ends up with a key
+    /// log whose keys are gone.
+    pub scratch: bool,
 }
 
 /// Why a Capsule cannot be opened, in words a person can act on.
@@ -62,8 +68,13 @@ pub enum FormatError {
 
 impl Marker {
     fn render(&self) -> String {
+        let scratch = if self.scratch {
+            ",\n  \"scratch\": true"
+        } else {
+            ""
+        };
         format!(
-            "{{\n  \"format\": {},\n  \"capsule_id\": \"{}\",\n  \"created_by\": \"{}\",\n  \"last_opened_by\": \"{}\"\n}}\n",
+            "{{\n  \"format\": {},\n  \"capsule_id\": \"{}\",\n  \"created_by\": \"{}\",\n  \"last_opened_by\": \"{}\"{scratch}\n}}\n",
             self.format,
             escape(&self.capsule_id),
             escape(&self.created_by),
@@ -88,6 +99,7 @@ impl Marker {
             capsule_id: field("capsule_id")
                 .filter(|id| is_capsule_id(id))
                 .unwrap_or_default(),
+            scratch: field("scratch").is_some_and(|v| v == "true"),
         })
     }
 }
@@ -148,6 +160,7 @@ pub fn open(paths: &CapsulePaths, engine: &str) -> Result<Marker, FormatError> {
             Some(id) if !id.is_empty() => id,
             _ => new_capsule_id().map_err(|e| FormatError::Io(e.to_string()))?,
         },
+        scratch: found.as_ref().is_some_and(|m| m.scratch),
     };
     write(&path, &marker.render()).map_err(|e| FormatError::Io(e.to_string()))?;
     Ok(marker)
@@ -188,6 +201,28 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let paths = CapsulePaths::new(dir.path());
         (dir, paths)
+    }
+
+    #[test]
+    fn a_scratch_capsule_stays_scratch_and_a_real_one_never_becomes_one() {
+        let (_dir, paths) = capsule();
+        // As the self-check writes it, before the engine first opens it.
+        std::fs::write(
+            paths.capsule_marker(),
+            "{\"format\": 1, \"scratch\": true}\n",
+        )
+        .unwrap();
+        let first = open(&paths, "0.9.0").unwrap();
+        assert!(first.scratch);
+        assert!(is_capsule_id(&first.capsule_id));
+        let again = open(&paths, "0.9.0").unwrap();
+        assert!(again.scratch, "kept when the marker is written again");
+        assert_eq!(again.capsule_id, first.capsule_id);
+
+        let (_real, real) = capsule();
+        assert!(!open(&real, "0.9.0").unwrap().scratch);
+        let text = std::fs::read_to_string(real.capsule_marker()).unwrap();
+        assert!(!text.contains("scratch"), "{text}");
     }
 
     #[test]
