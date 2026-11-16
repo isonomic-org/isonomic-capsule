@@ -6,6 +6,7 @@ pub mod config;
 pub mod error;
 pub mod format;
 pub mod hardware;
+pub mod log;
 pub mod memory;
 pub mod paths;
 pub mod ram_gate;
