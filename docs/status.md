@@ -75,8 +75,33 @@ Newest first. This file is the engine's status from now on. The history of each 
 - **Same-user trust on the engine's socket.** The socket is user-only (0600, in a user-only folder), and a caller with no token is the shell. So any program running as the same user can do what the window can: read every app's data and sessions, grant apps, stop the engine. Other users on the Mac cannot. Most desktop apps share this limit. Tokens for the shell itself are planned for Milestone 4.
 - **A full disk is refused as `too_large`**, with a plain message giving the space needed and free. A code of its own waits until after version 1.
 - **Attachments are kept in memory** by the agents host and would not survive a restart. Chat's attach button is off in version 1.
+- **The Isonomic ID's recovery key is on the same Mac** until the recovery kit exists (isonomic-id issue 14). Its seed waits in the login keychain for the kit to show it to the person, so for now it does not help if the Mac is lost. The ID never has to be made again for it.
 
 New entries go at the top of this file, naming the area; older ones move to their area's file when this one nears 20 KB. The spec stays in `isonomic-desktop/docs/architecture/`.
+
+## 2026-11-16 · Identity: the person's Isonomic ID at first need (R7, step 1)
+
+- New crate `identity`, on the identity library at `ID_REF` `d39a507` (frozen at version 1, never changed from here). `identity.get` (shell only, isonomic-sdk #34, merged at `90eb83f`) answers the person's ID and whether that call made it; `identity_unavailable` carries the reason in plain words.
+- **What is made, the first time the window asks:**
+  - a P-256 signing key and a P-256 device rotation key, from the Mac key store: in the secure chip when the build may use it, else the login keychain, which an unsigned build always gets;
+  - the recovery kit's 32-byte seed, kept in the login keychain. The recovery key is derived from it as the kit will derive it (the seed is the Ed25519 private key, RFC 8032) and committed in the first entry, since a key log never lets a recovery key be added later.
+  - Then the key log is made, kind person. It is kept in `identity/person.log` in the Capsule, exactly as the library encoded it, and the ID is `did:iso:` and 64 hex characters, as the library gives it.
+- **Every item is labelled for its Capsule** by a new `capsule_id` in `capsule.json`, made once and kept.
+- **Order:** the seed is kept before anything commits to it, and the keys before the log names them. The log file is written whole and renamed into place. After a crash part-way, the next attempt uses what was kept.
+- **Later calls read the Capsule's file and never touch the key store.** The key store is opened only to make an ID.
+- **Off the Mac** (Linux, in CI and development), `identity.get` answers "Isonomic IDs are made with your computer's key store, and this computer has none Isonomic can use." Tests give the engine the identity library's in-memory store.
+- **Checked:**
+  - the ID is made once and read back by a later engine without the key store;
+  - the log commits a device rotation key and the recovery key of the kept seed;
+  - a crash before the log reuses the kept keys;
+  - no key store and a refused keychain answer in plain words and write nothing;
+  - a damaged record is refused and left as it is;
+  - the derivation matches RFC 8032's own vector;
+  - the older-Capsule fixture gets an ID on first open, then the same one;
+  - conformance 31 of 31, `identity.stable` included;
+  - the library's own `identities.rs` and `vectors.rs` are compiled here with this repo's lockfile and pass (`crates/identity/tests/library.rs`, reaching the frozen vectors through the `vectors` link at this repo's root);
+  - the keychain code checked with clippy for both Mac targets.
+- **No Ethereum binding at first run yet** (Omar decides). Adding it is one more entry where the ID is made, signed by the device rotation key.
 
 ## 2026-11-16 · Supervisor: nothing a service runs outlives the engine
 
@@ -125,16 +150,3 @@ New entries go at the top of this file, naming the area; older ones move to thei
   - the session takes the next message and the turn ends `done`;
   - no worker process is left behind.
 - **On the Intel Mac** (`later_turns`, capsule `fad9379`, the 2B model, idle): turn 1 first text 11.73 s; turns 2 and 3 first text 0.42 s and 0.39 s (each about 8 s in all).
-
-## 2026-11-16 · Agents: harness `ae4f1a7`, chat preset version 3
-
-- Pins: isonomic-sdk `99630cc`, harness `ae4f1a7`.
-  - Chat preset version 3 asks for shorter answers, with `max_output_tokens = 1024`.
-  - No request is larger than the model's window: the context the gateway reports (8192 per slot) minus the reply's limit.
-  - A message too long for it ends its turn `failed` with `context.too_large`.
-  - The window is the picked model's, when a session names one. Conformance: 30 of 30.
-- **Measured here** (4 cores, llama.cpp `b12387`). Through the engine, "Plan one day in Lisbon." in six fresh sessions (`real_model`'s `the_same_first_request_in_fresh_sessions`).
-  - **Qwen3.5 2B:** 182 to 368 tokens. Warm runs took 15 to 26 s, with first text in 0.3 to 1.8 s; the first run took 43 s with the model's load. On the same server and prompt, preset version 2 wrote 902 and 1080 tokens in 92 and 81 s.
-  - **Quality, 2B:** it refused none of the six. Every reply names real places (Belém Tower, the Jerónimos Monastery, São Jorge Castle, Alfama, Chiado). Every one also has mistakes: Porto's sights placed in Lisbon, a "Louvre Palace Museum", a train to Funchal.
-  - **Qwen3.5 0.8B:** 110 to 227 tokens in 4 to 8 s warm. It refused none, but nearly every place is invented or in another city, as before.
-- **On the Intel Mac** (release build 96, acceptance check): the second turn's first text went from 27.5 s to 2.62 s with the cache fix of #53.

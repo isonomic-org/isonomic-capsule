@@ -96,6 +96,14 @@ pub async fn shell(root: &Path, port: u16) -> Client {
         sql: Sql::new(Arc::new(appdb::StandIn::default())),
         agents: Arc::new(host),
         models: gateway,
+        identity: Arc::new(identity::IdentityService::new(identity::Person::new(
+            root,
+            &capsule_core::format::open(&paths, "test")
+                .unwrap()
+                .capsule_id,
+            identity::memory_backend(),
+            Arc::new(SystemClock),
+        ))),
     };
     let system = StackSystem::new(
         Arc::new(supervisor::Stack::new(None)),

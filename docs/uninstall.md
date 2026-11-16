@@ -35,6 +35,8 @@ rm -rf /tmp/isonomic-$(id -u)-*
 
 If you set `ISONOMIC_CAPSULE_DIR` to keep your data somewhere else, delete that folder instead.
 
+Your Isonomic ID's keys are in your login keychain, not in that folder. Deleting them ends that ID for good: there is no recovery kit yet to bring it back. To delete them, open Keychain Access, search for `isonomic-id`, select what it finds and delete it. To keep the ID for a later install, leave them.
+
 ## How much space it takes
 
 Most of it is models: 0.5 GB to 1.3 GB for the small ones Isonomic starts with, up to several GB for larger ones. To see the total:

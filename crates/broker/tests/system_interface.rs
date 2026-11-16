@@ -137,6 +137,7 @@ async fn serve(system: Arc<dyn System>) -> (tempfile::TempDir, PathBuf) {
         sql: broker::Sql::new(Arc::new(appdb::StandIn::default())),
         agents: Arc::new(broker::NoAgents),
         models: Arc::new(broker::NoModels),
+        identity: Arc::new(broker::identity::NoIdentity),
     };
     tokio::spawn(broker::serve(bound, system, Arc::new(services)));
     (dir, socket)

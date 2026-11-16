@@ -9,6 +9,7 @@ members = [
     "crates/appdb",
     "crates/agents",
     "crates/gateway",
+    "crates/identity",
     "crates/reports",
     "xtask",
     "bin/isonomic-capsule",
@@ -28,6 +29,7 @@ packaging = { path = "crates/packaging" }
 appdb = { path = "crates/appdb" }
 agents = { path = "crates/agents" }
 gateway = { path = "crates/gateway" }
+identity = { path = "crates/identity" }
 reports = { path = "crates/reports" }
 bytes = "1"
 flate2 = "1"
@@ -57,6 +59,18 @@ isonomic-inference-testkit = { path = "../isonomic-inference/crates/testkit" }
 isonomic-llama = { path = "../isonomic-inference/crates/llama" }
 isonomic-model-library = { path = "../isonomic-inference/crates/library" }
 isonomic-provider = { path = "../isonomic-inference/crates/provider" }
+# The Isonomic ID, from the isonomic-id sibling checkout at ID_REF (frozen
+# at version 1; never changed from here).
+id-check = { path = "../isonomic-id/crates/id-check" }
+id-core = { path = "../isonomic-id/crates/id-core" }
+id-eth = { path = "../isonomic-id/crates/id-eth" }
+id-grants = { path = "../isonomic-id/crates/id-grants" }
+id-keys = { path = "../isonomic-id/crates/id-keys" }
+id-resource = { path = "../isonomic-id/crates/id-resource" }
+# The same key library the identity crates use, for the recovery key.
+ring = "0.17"
+# The Mac keychain, as the identity crates reach it (macOS only).
+security-framework = { version = "3", features = ["OSX_10_15"] }
 futures-util = "0.3"
 # The model library's HTTP client, with the same features, so types unify.
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream", "json"] }

@@ -18,10 +18,13 @@ On macOS it is `~/Library/Application Support/Isonomic/Capsule` (`ISONOMIC_CAPSU
 ```json
 {
   "format": 1,
+  "capsule_id": "3f9c0a7e1b2d4c5f8e6a7b9c0d1e2f3a",
   "created_by": "0.9.0",
   "last_opened_by": "1.0.0"
 }
 ```
+
+`capsule_id` is 32 random hex characters, made once and then kept. It labels what the Capsule keeps outside its folder, the keychain items of its Isonomic ID, so a moved Capsule keeps them and two Capsules never share them. It was added without a format change: a marker without it gets one on the next open, and older builds ignore it.
 
 ## What format 1 is
 
@@ -33,6 +36,8 @@ On macOS it is `~/Library/Application Support/Isonomic/Capsule` (`ISONOMIC_CAPSU
 | `secrets/token.key` | 32 random bytes, made on first start, user-only. Apps' tokens are derived from it, and only their digests are stored. | Never changes. Replacing it would revoke every app's token. |
 | `models/` | One file per model, named by the model library manifest's `file_name`. A model is installed when its file is there at full size. `<name>.part` is a download not yet finished; the next attempt continues it. | The manifest. A later manifest that keeps a file name reuses the file; one that renames it downloads the model again. |
 | `blobs/` | One file per blob, named by its handle; its row is in `registry.db`. | The Capsule format. |
+| `identity/person.log` | The person's Isonomic ID: its key log, one entry per line, each the signed envelope's bytes in hexadecimal exactly as the identity library made them. Written whole and renamed into place. | The identity library's frozen version 1 format (isonomic-id `vectors/v1`). New in 0.9 without a format change: a Capsule without it gets an ID the first time the window asks. |
+| Outside the folder: the login keychain | The ID's keys and the recovery seed, labelled `isonomic-id:capsule/<capsule_id>/person/…`: a P-256 signing key and a P-256 device rotation key (in the secure chip when the build may use it), and the recovery kit's 32-byte seed. | Never leave the keychain. The seed waits there until the recovery kit shows it to the person. |
 | `services/postgres/` | The bundled database's data (PostgreSQL 18). | The database's major version, in its own `PG_VERSION`. The engine refuses a data directory of another major version, since one cannot read another's files. Moving to a new major version needs an upgrade step written for it, and a format bump. |
 | `services/cache/` | The cache and queue service's data. | Its own. Disposable: losing it loses nothing a person made. |
 | `reports/pending/` | Problem reports waiting to be shown, one JSON file each (`<unix millis>-<kind>.json`), written by the window and the engine. Each holds only scrubbed text; nothing is sent. The window prunes them (30 days, 20 at most). | The report format, 1 today, in each file's `format`. Older builds ignore the folder. |

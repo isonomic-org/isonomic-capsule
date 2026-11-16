@@ -11,6 +11,7 @@ pub mod blobs;
 mod conn;
 pub mod events;
 pub mod host;
+pub mod identity;
 pub mod models;
 mod random;
 pub mod sql;
@@ -27,6 +28,7 @@ pub use apps::{Apps, TokenKey};
 pub use blobs::Blobs;
 pub use events::Events;
 pub use host::StackSystem;
+pub use identity::{Identity, NoIdentity};
 pub use models::{Models, ModelsAnswer, NoModels};
 pub use sql::Sql;
 
@@ -113,6 +115,8 @@ pub struct Services {
     pub sql: Sql,
     pub agents: Arc<dyn Agents>,
     pub models: Arc<dyn Models>,
+    /// The person's Isonomic ID (`identity.get`, shell only).
+    pub identity: Arc<dyn identity::Identity>,
 }
 
 /// Accept connections until the task is dropped.

@@ -95,6 +95,7 @@ async fn rig(slow: bool) -> Rig {
         sql: Sql::new(Arc::new(appdb::StandIn::default())),
         agents: Arc::new(broker::NoAgents),
         models: Arc::new(gateway),
+        identity: Arc::new(broker::identity::NoIdentity),
     };
     let stack = Arc::new(supervisor::Stack::new(None));
     let hardware = Arc::new(FixedHardware::with_total(16 << 30));
