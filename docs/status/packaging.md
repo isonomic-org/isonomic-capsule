@@ -2,6 +2,13 @@
 
 Newest first.
 
+## 2026-11-16 · Packaging: every bundled program's licence is in the notice, or the fetch fails
+
+- On the Mac run of `fetch-sidecars`, the model server had no licence text in `NOTICES.txt`. Its install predated `licenseFiles`, and its stamp still matched, so it was never installed again.
+- **An install without its licence text is no longer current.** When the manifest names licence files and the install has none, it is installed again. The model server's archive carries `LICENSE`.
+- **`fetch-sidecars` now fails** when any bundled program installed for this build has no licence text. This includes one whose manifest entry names no licence files. Programs installed for no target are not in the build and are not named. A release build cannot go out without every licence.
+- Checked: an install with its licence removed is named as missing, then installed again with it, after which nothing is missing; the Linux fetch passes.
+
 ## 2026-11-16 · Packaging: every bundled file runs on macOS 13.3
 
 - **Found on the Intel Mac:** the release refused the disk image because the database said it needs macOS 26.0 (both architectures) and the cache 15.0. The model server was already 13.3.

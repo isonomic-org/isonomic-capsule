@@ -183,10 +183,17 @@ async fn run() -> Result<(), AnyError> {
     .map_err(|e| format!("the agents host did not start: {e:?}"))?;
     // The person's Isonomic ID, made from the computer's key store the first
     // time the window asks for it, and the directory of accepted logs.
+    // A scratch Capsule (the window's self-check) may keep its keys in
+    // memory, so it writes nothing to the person's keychain.
+    let asked = std::env::var(identity::store_choice::ENV_KEY_STORE).ok();
+    let (store, note) = identity::store_choice::choose(asked.as_deref(), marker.scratch);
+    if let Some(note) = note {
+        log(note);
+    }
     let person = identity::Person::new(
         paths.root(),
         &marker.capsule_id,
-        identity::system_backend(),
+        identity::store_choice::backend(store),
         Arc::new(capsule_core::SystemClock),
     );
     for note in person.logs().notes() {

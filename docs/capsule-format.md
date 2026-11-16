@@ -26,6 +26,8 @@ On macOS it is `~/Library/Application Support/Isonomic/Capsule` (`ISONOMIC_CAPSU
 
 `capsule_id` is 32 random hex characters, made once and then kept. It labels what the Capsule keeps outside its folder, the keychain items of its Isonomic ID, so a moved Capsule keeps them and two Capsules never share them. It was added without a format change: a marker without it gets one on the next open, and older builds ignore it.
 
+`"scratch": true` marks a throwaway Capsule, such as the window's self-check. Whoever makes the folder writes it, before the engine first opens it, as `{"format": 1, "scratch": true}`. The engine never sets it and keeps it on every open. Only a scratch Capsule may keep its ID's keys in memory (`ISONOMIC_KEY_STORE=memory`), so a real Capsule never ends up with a key log whose keys are gone. On a real Capsule the variable is refused and logged.
+
 ## What format 1 is
 
 | Path | What | Versioned by |

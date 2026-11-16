@@ -14,6 +14,7 @@ mod person;
 pub mod recovery;
 pub mod resources;
 mod secrets;
+pub mod store_choice;
 pub mod world;
 
 use std::collections::{BTreeSet, HashMap};
