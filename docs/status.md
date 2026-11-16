@@ -12,6 +12,19 @@ Newest first. This file is the engine's status from now on. The history of each 
 
 New entries go at the top of this file, naming the area; older ones move to their area's file when this one nears 20 KB. The spec stays in `isonomic-desktop/docs/architecture/`.
 
+## 2026-11-16 · Agents: harness `ae4f1a7`, chat preset version 3
+
+- Pins: isonomic-sdk `99630cc`, harness `ae4f1a7`.
+  - Chat preset version 3 asks for shorter answers, with `max_output_tokens = 1024`.
+  - No request is larger than the model's window: the context the gateway reports (8192 per slot) minus the reply's limit.
+  - A message too long for it ends its turn `failed` with `context.too_large`.
+  - The window is the picked model's, when a session names one. Conformance: 30 of 30.
+- **Measured here** (4 cores, llama.cpp `b12387`). Through the engine, "Plan one day in Lisbon." in six fresh sessions (`real_model`'s `the_same_first_request_in_fresh_sessions`).
+  - **Qwen3.5 2B:** 182 to 368 tokens. Warm runs took 15 to 26 s, with first text in 0.3 to 1.8 s; the first run took 43 s with the model's load. On the same server and prompt, preset version 2 wrote 902 and 1080 tokens in 92 and 81 s.
+  - **Quality, 2B:** it refused none of the six. Every reply names real places (Belém Tower, the Jerónimos Monastery, São Jorge Castle, Alfama, Chiado). Every one also has mistakes: Porto's sights placed in Lisbon, a "Louvre Palace Museum", a train to Funchal.
+  - **Qwen3.5 0.8B:** 110 to 227 tokens in 4 to 8 s warm. It refused none, but nearly every place is invented or in another city, as before.
+- **On the Intel Mac** (release build 96, acceptance check): the second turn's first text went from 27.5 s to 2.62 s with the cache fix of #53.
+
 ## 2026-11-16 · Gateway and agents: the model picker and the agents follow-ups (isonomic-sdk #30, harness #41 and #42)
 
 - `models.list` and `models.info` mark the model `models.recommended` names for this machine (`ModelInfo.recommended`).
