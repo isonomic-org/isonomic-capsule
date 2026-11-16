@@ -29,6 +29,7 @@ use crate::recovery::{new_seed, recovery_public_key, SEED_BYTES};
 use crate::secrets::Secrets;
 
 /// The key store and secrets a person's ID is made with.
+#[derive(Clone)]
 pub struct Backend {
     pub keys: Arc<dyn KeyStore>,
     pub secrets: Arc<dyn Secrets>,
@@ -57,6 +58,7 @@ pub enum IdentityError {
 }
 
 pub struct Person {
+    root: PathBuf,
     file: PathBuf,
     capsule_id: String,
     open: OpenBackend,
@@ -66,6 +68,8 @@ pub struct Person {
     /// The ID once known; the lock also keeps two first calls from both
     /// making one.
     known: Mutex<Option<PrincipalId>>,
+    /// The key store, once opened: only to make or sign, never to show.
+    backend: Mutex<Option<Backend>>,
 }
 
 impl Person {
@@ -73,13 +77,66 @@ impl Person {
     /// `capsule_id`.
     pub fn new(root: &Path, capsule_id: &str, open: OpenBackend, clock: Arc<dyn Clock>) -> Self {
         Self {
+            root: root.to_path_buf(),
             file: root.join("identity").join("person.log"),
             capsule_id: capsule_id.to_string(),
             open,
             clock,
             logs: Arc::new(Logs::open(root)),
             known: Mutex::new(None),
+            backend: Mutex::new(None),
         }
+    }
+
+    /// The key store, opened the first time it is needed.
+    pub(crate) fn backend(&self) -> Result<Backend, IdentityError> {
+        let mut kept = self.backend.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some(backend) = kept.as_ref() {
+            return Ok(backend.clone());
+        }
+        let backend = (self.open)().map_err(IdentityError::Unavailable)?;
+        *kept = Some(backend.clone());
+        Ok(backend)
+    }
+
+    /// The person's ID and the key that signs for it, making the ID first
+    /// if there is none. Signing is what needs the key store after an ID
+    /// exists (an unsigned build's keychain may ask the person to allow it).
+    pub fn signer(&self) -> Result<(PrincipalId, StoredKey), IdentityError> {
+        let (id, _) = self.get()?;
+        let backend = self.backend()?;
+        let handle = KeyHandle(self.label("device-signing"));
+        let key = StoredKey::open(backend.keys, handle)
+            .map_err(|e| IdentityError::KeyStore(e.to_string()))?;
+        Ok((id, key))
+    }
+
+    /// When now is, for what the person signs.
+    pub(crate) fn now(&self) -> u64 {
+        self.clock.now_unix().max(0) as u64
+    }
+
+    /// The Capsule's id, which labels its key store items.
+    pub(crate) fn capsule_id(&self) -> &str {
+        &self.capsule_id
+    }
+
+    /// The Capsule's root folder.
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
+    /// The person's ID if it has been made, without making it.
+    pub fn peek(&self) -> Result<Option<PrincipalId>, IdentityError> {
+        let mut known = self.known.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some(id) = known.as_ref() {
+            return Ok(Some(id.clone()));
+        }
+        let found = self.read()?.map(|log| log.id().clone());
+        if let Some(id) = &found {
+            *known = Some(id.clone());
+        }
+        Ok(found)
     }
 
     /// The Capsule's directory of accepted logs.
@@ -114,10 +171,10 @@ impl Person {
     }
 
     fn make(&self) -> Result<Log, IdentityError> {
-        let backend = (self.open)().map_err(IdentityError::Unavailable)?;
+        let backend = self.backend()?;
         let seed = self.seed(backend.secrets.as_ref())?;
-        let signing = key(&backend.keys, &self.label("device-signing"))?;
-        let rotation = key(&backend.keys, &self.label("device-rotation"))?;
+        let signing = key(&backend.keys, &self.label("device-signing"), KeyAlg::P256)?;
+        let rotation = key(&backend.keys, &self.label("device-rotation"), KeyAlg::P256)?;
         let next = vec![
             Commitment::device(&rotation.public_key()),
             Commitment::recovery(&recovery_public_key(&seed)),
@@ -160,13 +217,17 @@ impl Person {
     }
 }
 
-/// The key under `label`, made if it is not kept yet.
-fn key(store: &Arc<dyn KeyStore>, label: &str) -> Result<StoredKey, IdentityError> {
+/// The key under `label`, made with `alg` if it is not kept yet.
+pub(crate) fn key(
+    store: &Arc<dyn KeyStore>,
+    label: &str,
+    alg: KeyAlg,
+) -> Result<StoredKey, IdentityError> {
     let failed = |e: KeyError| IdentityError::KeyStore(e.to_string());
     match StoredKey::open(Arc::clone(store), KeyHandle(label.to_string())) {
         Ok(key) => Ok(key),
         Err(KeyError::NotFound) => {
-            StoredKey::generate(Arc::clone(store), KeyAlg::P256, label).map_err(failed)
+            StoredKey::generate(Arc::clone(store), alg, label).map_err(failed)
         }
         Err(e) => Err(failed(e)),
     }

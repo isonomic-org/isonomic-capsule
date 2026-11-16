@@ -1139,6 +1139,7 @@ dependencies = [
  "id-resource",
  "isonomic-proto",
  "ring",
+ "rusqlite",
  "security-framework 3.7.0",
  "tempfile",
  "thiserror",

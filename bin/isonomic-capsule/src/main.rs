@@ -184,6 +184,19 @@ async fn run() -> Result<(), AnyError> {
     for note in person.logs().notes() {
         log(note);
     }
+    let identity = identity::IdentityService::new(person).with_apps(Arc::clone(&apps));
+    // Apps approved before they got grants (a Capsule from an earlier
+    // build) get them now, in the background, once the person has an ID.
+    {
+        let identity = identity.clone();
+        tokio::task::spawn_blocking(move || match identity.fill_in() {
+            Ok(0) => {}
+            Ok(n) => log(format!(
+                "issued grants to {n} app(s) approved before they had them"
+            )),
+            Err(e) => log(format!("could not issue grants yet: {e}")),
+        });
+    }
     let services = broker::Services {
         apps,
         blobs: broker::Blobs::open(&paths.blobs_dir(), &paths.registry_db())
@@ -197,7 +210,7 @@ async fn run() -> Result<(), AnyError> {
         ))),
         agents: Arc::new(host),
         models: gateway,
-        identity: Arc::new(identity::IdentityService::new(person)),
+        identity: Arc::new(identity),
     };
     let server = tokio::spawn(broker::serve(listener, system.clone(), Arc::new(services)));
 

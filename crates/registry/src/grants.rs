@@ -87,6 +87,19 @@ impl GrantStore {
         )
         .optional()
     }
+
+    /// Every app approved so far, with its current manifest.
+    pub fn all(&self) -> rusqlite::Result<Vec<Grant>> {
+        let conn = self.conn.lock().expect("grants lock");
+        let mut rows = conn.prepare("SELECT app, manifest FROM grants ORDER BY app")?;
+        let grants = rows.query_map([], |row| {
+            Ok(Grant {
+                app: row.get(0)?,
+                manifest: row.get(1)?,
+            })
+        })?;
+        grants.collect()
+    }
 }
 
 #[cfg(test)]

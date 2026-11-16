@@ -89,6 +89,15 @@ pub async fn shell(root: &Path, port: u16) -> Client {
     })
     .await
     .unwrap();
+    let identity = identity::IdentityService::new(identity::Person::new(
+        root,
+        &capsule_core::format::open(&paths, "test")
+            .unwrap()
+            .capsule_id,
+        identity::memory_backend(),
+        Arc::new(SystemClock),
+    ))
+    .with_apps(Arc::clone(&apps));
     let services = Services {
         apps,
         blobs: Blobs::open(&paths.blobs_dir(), &paths.registry_db()).unwrap(),
@@ -96,14 +105,7 @@ pub async fn shell(root: &Path, port: u16) -> Client {
         sql: Sql::new(Arc::new(appdb::StandIn::default())),
         agents: Arc::new(host),
         models: gateway,
-        identity: Arc::new(identity::IdentityService::new(identity::Person::new(
-            root,
-            &capsule_core::format::open(&paths, "test")
-                .unwrap()
-                .capsule_id,
-            identity::memory_backend(),
-            Arc::new(SystemClock),
-        ))),
+        identity: Arc::new(identity),
     };
     let system = StackSystem::new(
         Arc::new(supervisor::Stack::new(None)),
