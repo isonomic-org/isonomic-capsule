@@ -280,3 +280,60 @@ async fn wait_for_title(stream: &mut SessionStream) {
         }
     }
 }
+
+/// The same first request in fresh sessions, as the refusal and length
+/// checks ask it: each reply's first text, total time, streamed chunks
+/// (about one token each) and text. `ISONOMIC_TEST_RUNS` sets how many
+/// (6), `ISONOMIC_TEST_OUT` a file for the replies.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs ISONOMIC_TEST_LLAMA_SERVER and ISONOMIC_TEST_MODEL"]
+async fn the_same_first_request_in_fresh_sessions() {
+    let rig = rig().await;
+    let agents = rig.chat.agents();
+    let prompt = std::env::var("ISONOMIC_TEST_PROMPT")
+        .unwrap_or_else(|_| "Plan one day in Lisbon.".to_string());
+    let runs: usize = std::env::var("ISONOMIC_TEST_RUNS")
+        .ok()
+        .and_then(|r| r.parse().ok())
+        .unwrap_or(6);
+    let mut out = String::new();
+    for run in 1..=runs {
+        let session = agents.create("chat").await.unwrap();
+        let mut stream = agents.subscribe(&session, 0).await.unwrap();
+        let started = Instant::now();
+        agents.send_text(&session, &prompt).await.unwrap();
+        let (mut chunks, mut first, mut text) = (0usize, None, String::new());
+        let stop = loop {
+            let next = tokio::time::timeout(Duration::from_secs(600), stream.next()).await;
+            match next.expect("no update within 600 s").expect("stream ended") {
+                SessionUpdate::Delta(_) => {
+                    chunks += 1;
+                    first.get_or_insert_with(|| started.elapsed());
+                }
+                SessionUpdate::Event(e) => {
+                    let value = serde_json::to_value(&*e).unwrap();
+                    match value["type"].as_str() {
+                        Some("assistant") => {
+                            for part in value["content"].as_array().into_iter().flatten() {
+                                text.push_str(part["text"].as_str().unwrap_or(""));
+                            }
+                        }
+                        Some("turn.end") => break value["stop"].to_string(),
+                        _ => {}
+                    }
+                }
+                other => panic!("unexpected {other:?}"),
+            }
+        };
+        println!(
+            "run {run}: first text {:.2} s, total {:.2} s, {chunks} tokens, {} characters, {stop}",
+            first.map_or(0.0, |f| f.as_secs_f64()),
+            started.elapsed().as_secs_f64(),
+            text.chars().count()
+        );
+        out.push_str(&format!("===== run {run} ({chunks} tokens)\n{text}\n\n"));
+    }
+    if let Ok(path) = std::env::var("ISONOMIC_TEST_OUT") {
+        std::fs::write(path, out).unwrap();
+    }
+}
