@@ -2,6 +2,31 @@
 
 Newest first. The model gateway: local models through isonomic-inference, the catalogue, downloads and the chat workers. Moved here from `docs/status.md`.
 
+## 2026-11-16 · Gateway: a model stays loaded for its profile's idle time
+
+- A local model's worker is unloaded after the profile's idle time (`Profile::model_idle_unload`): 5 min on low, 15 min on standard, never on high. Before this, every profile used the inference supervisor's default, 5 min. On the 16 GB Intel Mac (standard), a reader who answered after 5 minutes paid a cold load (about 5 s there) and a full re-read of the conversation. The test covers each profile and the default.
+- The reader's pass over the docs (Worker reports): deferrals since done are marked so in their area files; the known limitations of version 1 are listed above.
+- **A database left by an engine killed outright is stopped before the next one starts.** The Intel Mac showed it: after `kill -9` of the engine, the model server was gone (its guardian), but PostgreSQL and the cache kept running until the next start.
+  - Reaping (#23) already stopped them, by the engine's pid files in the run directory.
+  - If the run directory had been cleaned meanwhile, the next engine missed the old database. Its own server could not start on the locked data directory, and its readiness probe answered from the old server's socket. Checked here: the new engine "started" against a server it did not own.
+  - Now the service's own pid file (PostgreSQL's `postmaster.pid`) is read when the engine's is gone.
+  - Tested on a real PostgreSQL with a real orphan: the first engine is a child process killed with SIGKILL, in both cases (`crates/supervisor/tests/orphan_database.rs`, opt-in).
+
+## 2026-11-16 · Gateway and agents: what a first-time user can hit
+
+- **Downloads survive a quit, sleep or lost connection** (`gateway::fetch`, in place of the model library's downloader, which always started over and could wait forever on a dead connection).
+  - The file arrives as `<name>.part`; the next attempt continues it with a range request, re-reading what is on disk into the checksum. A server that ignores the range gets a clean restart.
+  - A transfer that sends nothing for 60 s fails and keeps its part. Progress starts from what is already on disk.
+  - Only a whole file whose SHA-256 matches is renamed into place, so a half file never counts as installed. A part that fails the checksum is thrown away; a whole part left before its rename installs without a request.
+  - An explicit cancel also keeps the part, for the next attempt.
+- **Disk space is checked before a download starts**: the bytes still missing plus 1 GiB to spare. Without room the call is refused (`too_large`, the nearest code the wire has) in plain words: "There is not enough free disk space to download Qwen3.5 2B: it needs 2.4 GB and 0.9 GB is free. Free up some space, then try again." A volume that cannot be read is not refused.
+- **A crash mid-turn leaves the session usable.** Checked by dropping an engine's runtime mid-reply, with nothing shut down, and starting another on the same Capsule:
+  - the socket binds again;
+  - the interrupted turn is sealed `interrupted`;
+  - the session takes the next message and the turn ends `done`;
+  - no worker process is left behind.
+- **On the Intel Mac** (`later_turns`, capsule `fad9379`, the 2B model, idle): turn 1 first text 11.73 s; turns 2 and 3 first text 0.42 s and 0.39 s (each about 8 s in all).
+
 ## 2026-11-16 · Gateway and agents: later turns reuse the conversation's cache
 
 - **Why the second turn was slow** (27.5 s to first text on the Intel Mac, against 7.1 s for the first): every turn read the previous reply again from scratch. Found from llama.cpp `b12387`'s own slot logs with Qwen3.5 2B, through the engine's gateway and agents host (`crates/agents/tests/real_model.rs`). There were two causes:

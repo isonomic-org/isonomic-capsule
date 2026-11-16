@@ -2,6 +2,29 @@
 
 Newest first. Every deviation and deferral is recorded here.
 
+## 2026-11-16 · Supervisor: nothing a service runs outlives the engine
+
+- **A guardian beside every supervised service** (the database, the cache, and the lazy tier's services), approved by the orchestrator under rule 10.
+  - It is a small shell reading a pipe that only the engine holds. The kernel closes the pipe when the engine dies, however it dies. The guardian then stops the service as a deliberate stop would: the service's own stop signal first (SIGINT for the database, its fast shutdown with a clean checkpoint), and a hard kill once the stop grace has passed.
+  - A deliberate stop never wakes it. The monitor disarms a child's guardian once it reaps that child, and disarming kills the shell before the pipe closes. So a guardian never signals a process group whose number may be reused.
+  - This is the same design as the model server's guardian in isonomic-inference.
+- **Measured on a real PostgreSQL** with the first engine a child killed by SIGKILL: its database stopped 1.2 s later, cleanly (no `postmaster.pid` left, so no crash recovery on the next start), and the next engine started its own.
+- **Reaping stays as the backstop** for a guardian that died too. Both reaping tests now kill the guardian first, found by the process group in its arguments, never by name.
+- Tests: three for the guardian (stopped with the stop signal, killed after the grace when the signal is ignored, disarming leaves the service alone), and the three real-database cases in `crates/supervisor/tests/orphan_database.rs` (opt-in).
+
+## 2026-11-16 · Engine core: a Capsule made by one build opens in the next
+
+- **The marker.** `capsule.json` names the data format (1), who made the Capsule and who last opened it. The engine checks it before it opens anything else (`capsule_core::format::open`):
+  - no marker: format 1 is written (every Capsule from before markers is format 1);
+  - an older format: migrated (none yet);
+  - a newer one: refused in plain words, with nothing changed.
+- **The database.** The bundled database's data directory must be this build's major version (18, from its own `PG_VERSION`), else it is refused the same way.
+- **What is versioned**, and what a change to it requires, is in [docs/capsule-format.md](capsule-format.md): the registry's tables, the harness's per-event schema revision, the token key (never changes), the models folder (by the manifest's file names) and the database's major version.
+- **Tested** with a format 1 Capsule kept as text (`crates/agents/tests/fixtures/capsule-format-1/`) and opened by this engine (`older_capsule.rs`). Chat's old token works without a new grant, and its session is listed with its title. Its log reads back, and the session takes a new message.
+- [docs/uninstall.md](uninstall.md) says in plain words what Isonomic puts where on a Mac and how to remove it, keeping the data or not.
+- The engine's version moves from 0.0.1 to 0.9.0, the app's numbering for test builds, so the marker names the same version the app does.
+- Pins: isonomic-sdk `439a069` (only its `UI_REF` moved), `UI_REF` `2e3116b`, the components that passed QA. The harness stays at `ae4f1a7`.
+
 ## 2026-11-15 · Engine core: the memory gate reads macOS as macOS counts memory
 
 - Found on the 16 GB Intel Mac in ordinary use: the gate refused Qwen3.5 2B and even the 0.5 GB model, twice in four runs. It read 1.0 to 1.6 GB available while the Mac had about 160 MB free but 5.5 GB of inactive pages, which macOS hands out on demand, and its pressure was normal. On top of that it added a fixed 2 GB headroom, more than the models themselves.
