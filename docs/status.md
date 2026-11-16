@@ -11,6 +11,27 @@ Newest first. This file is the engine's status from now on. The history of each 
 - [Packaging](status/packaging.md): bundled services and the app bundle.
 - [Later modules](status/engine-later.md): reserved crates.
 
+## 2026-11-16 · Problem reports: the engine writes its own, in the window's format 1
+
+- **New crate `reports`.** The engine writes reports into the Capsule's `reports/pending/`, named and shaped as the window's own (format 1, `<millis>-<kind>.json`), so the window lists, shows and prunes them with its own. Each is written to a `.part` file and renamed. At most 20 are kept. Nothing is sent; no wire change.
+- **Three kinds the window does not write:**
+  - `panic`: the engine's panic hook, with a crate-relative backtrace and the last 50 lines of the engine's own log (a ring kept beside standard error);
+  - `service_failed`: a bundled service's breaker trips. It names the service, its bundled version, its restarts and how it last ended (`exit code 1`, `signal 9`);
+  - `model_server_failed`: a model worker quits unexpectedly (its first crash) and when its breaker trips. It names the model, the server and its version. A deliberate stop or an idle unload is not a failure.
+- **`component`** is `engine`, `engine/<service>` or `engine/llama-server`, with its version. The engine adds `service` or `model` beside the window's fields. `tab` is always null. `pins.chat` is empty, since the engine does not know it. The build number and the engine's commit come from the release build (`ISONOMIC_BUILD`, `ISONOMIC_ENGINE_COMMIT`); without them, `dev` and empty.
+- **The services are watched from outside.** The engine follows each supervisor's published state; the supervisors and the inference worker are unchanged. The gateway tells the engine of each new model worker (`Gateway::with_on_worker`).
+- **What a report never carries.** The scrubber is a copy of the window's, marked to be replaced by the SDK's shared crate when it has one. It turns home paths into `~`, removes quoted text over 40 characters, and cuts the message at 300. It adds one rule the window lacks: a run of 24 or more key characters holding 6 or more digits becomes `[key removed]`. That covers tokens, digests and the person's ID. Service logs get harder rules first:
+  - the database keeps only `LOG`, `WARNING`, `ERROR`, `FATAL` and `PANIC` lines, as their severity and first sentence. `STATEMENT`, `DETAIL`, `CONTEXT`, `HINT`, `QUERY` and continuation lines are dropped;
+  - the model server keeps only an allow-list of prefixes (loading, the server's start, its errors), so request and slot lines are dropped;
+  - every service line loses all quoted text and is cut at 200 characters.
+- **Not set up for a refused Capsule.** The hook and watches start only after the Capsule's marker is accepted, so a Capsule from a newer build is left with no `reports/` folder.
+- **Checked:**
+  - planted content (a prompt, a statement's value, a home path and a token), printed by stand-in services that then fail through the real supervisors, reaches no report, both for the database and for the model server on a manual clock;
+  - the hook writes a report with the engine's log before the process ends;
+  - names and the keep limit match the window's;
+  - a refused Capsule gets no report.
+- **Not yet:** lines the agents host and the gateway print to standard error directly are not in the ring; only the engine's own log is.
+
 ## 2026-11-16 · Packaging: every bundled file runs on macOS 13.3
 
 - **Found on the Intel Mac:** the release refused the disk image because the database said it needs macOS 26.0 (both architectures) and the cache 15.0. The model server was already 13.3.
@@ -104,31 +125,3 @@ New entries go at the top of this file, naming the area; older ones move to thei
   - **Quality, 2B:** it refused none of the six. Every reply names real places (Belém Tower, the Jerónimos Monastery, São Jorge Castle, Alfama, Chiado). Every one also has mistakes: Porto's sights placed in Lisbon, a "Louvre Palace Museum", a train to Funchal.
   - **Qwen3.5 0.8B:** 110 to 227 tokens in 4 to 8 s warm. It refused none, but nearly every place is invented or in another city, as before.
 - **On the Intel Mac** (release build 96, acceptance check): the second turn's first text went from 27.5 s to 2.62 s with the cache fix of #53.
-
-## 2026-11-16 · Gateway and agents: the model picker and the agents follow-ups (isonomic-sdk #30, harness #41 and #42)
-
-- `models.list` and `models.info` mark the model `models.recommended` names for this machine (`ModelInfo.recommended`).
-- `sessions.create` takes a `model`: trimmed, at most 128 characters (`agents::MAX_MODEL_NAME`), blank means the preset's own, then checked with the `models.stream` rule (`unknown_model`, `model_unavailable`, `unsupported`, and `capability_denied` from `proto::auth`), and passed to the host's create-time override.
-- A model name the gateway does not know fails the turn with a reason ("The model … is not available on this computer.") rather than falling back to another model.
-- Chat preset version 2 with no engine tools offered: the persona takes the most likely reading instead of asking, and the tools paragraph is gone. Measured against llama.cpp `b12387` with this exact prompt, 24 replies each: Qwen3.5 0.8B refused or asked to clarify 1 in 24 (about 1 in 6 before) but still invented places in most replies; Qwen3.5 2B refused none and named real Lisbon places in all 24.
-- `SessionSummary.model` reports the picked model (absent for the preset's own).
-- **Model rules, as the SDK has them:** a name is checked with `proto::agents::model_name`, so a blank name is now `bad_request` instead of meaning the preset's own model. The app's manifest is checked before the model is looked up (`capability_denied` before `unknown_model`), so an app learns nothing about models it may not use. Every model a preset the app stored names is held to the same rule: its reply model (unless the session names its own) and its title model, which runs either way. Built-in presets, and the engine's own `local:default` and `local:smallest`, are not.
-- **Streams end with `session_ended { reason: purged }`** when the host ends a subscription, so an app can tell a purge from a dropped connection.
-- **`approvals.user_action`** (shell only) mints the token with the engine's own resolver, the one the host verifies decisions with; it holds for the app named, that session and that approval.
-- **`artifacts.get` comes in chunks** of at most `CHUNK_BYTES` from `offset` (fewer with `length`). Reading at or past the end of a body that is not empty is `bad_request`.
-- Pins: isonomic-sdk `12ddf2f` (main with #30), harness `9a3809f`. Conformance: 30 of 30, with `agents.model_rules` and `agents.session_ended`.
-
-## 2026-11-16 · Gateway and agents: later turns reuse the conversation's cache
-
-- **Why the second turn was slow** (27.5 s to first text on the Intel Mac, against 7.1 s for the first): every turn read the previous reply again from scratch. Found from llama.cpp `b12387`'s own slot logs with Qwen3.5 2B, through the engine's gateway and agents host (`crates/agents/tests/real_model.rs`). There were two causes:
-  - **The title step evicted the conversation.** The worker had one slot, and the title prompt differs from the conversation's, so the next turn found the title's cache.
-  - **The model's chat template drops the empty thinking block** (`<think>\n\n</think>`) from every reply before the latest request. The model wrote the reply after that block, so the cached tokens stop matching at the start of the previous reply, even on a slot of its own. This is the larger cost: on a slow machine it grows with every long answer.
-- **Chat workers now run two slots of 8192 tokens** (`-np 2 -c 16384`): the conversation keeps one and the title takes the other. This costs about 116 MB more resident memory with the 2B model (2.73 → 2.84 GB).
-- **Qwen3.5 models get their own template with one line changed** (`crates/gateway/templates/history-kept.jinja`, written into `<models>/templates/` and passed with `--chat-template-file`): earlier replies keep the empty thinking block, as when they were written. The template is checked identical in the 0.8B and 2B models. Other models keep their own template.
-- **Measured here** (4 cores, 2B model, three turns of a day plan, the title running after turn 1), first text for turns 2 and 3:
-  - before: 3.1 s and 2.6 s, reading 597 and 497 tokens again;
-  - two slots only: 2.9 s and 2.8 s;
-  - two slots and the template: 0.36 s and 0.37 s, reading only the new 23–25 tokens (the slot keeps 100%).
-- **`ModelClient::caps` reports the real context:** the model's window cut to the worker's slot (8192), not the catalogue's 262144. Compaction works from this number.
-- **Refused agents calls are logged** with their method, app and code (`info: sessions.continue from com.isonomic.chat refused: continue_refused: …`).
-- **Continue after a stop on the first token** was checked against the real server, and the engine does not refuse it. With a one-character first token ("-", "#", "7") or a five-character one ("Hello", "Under"), the continued turn ends `done`. A stop before any text leaves nothing to continue, and the engine says so (`continue_refused`, "There is no partial reply to continue.").

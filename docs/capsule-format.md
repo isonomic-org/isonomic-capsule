@@ -35,6 +35,7 @@ On macOS it is `~/Library/Application Support/Isonomic/Capsule` (`ISONOMIC_CAPSU
 | `blobs/` | One file per blob, named by its handle; its row is in `registry.db`. | The Capsule format. |
 | `services/postgres/` | The bundled database's data (PostgreSQL 18). | The database's major version, in its own `PG_VERSION`. The engine refuses a data directory of another major version, since one cannot read another's files. Moving to a new major version needs an upgrade step written for it, and a format bump. |
 | `services/cache/` | The cache and queue service's data. | Its own. Disposable: losing it loses nothing a person made. |
+| `reports/pending/` | Problem reports waiting to be shown, one JSON file each (`<unix millis>-<kind>.json`), written by the window and the engine. Each holds only scrubbed text; nothing is sent. The window prunes them (30 days, 20 at most). | The report format, 1 today, in each file's `format`. Older builds ignore the folder. |
 | `logs/` | `engine.log` and the services' logs. | Not versioned; read by people. |
 | `run/` | Sockets (or `/tmp/isonomic-<uid>-<hash>/` when the Capsule's path is too deep for one). | Not versioned; made at every start. |
 | `settings/` | The window's settings, such as `start-at-login-off`. | The window. |
