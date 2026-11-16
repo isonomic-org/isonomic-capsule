@@ -7,6 +7,7 @@
 //! an app reaches the host only through its own sessions.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use futures_util::StreamExt;
 use gateway::Gateway;
@@ -22,11 +23,36 @@ use tokio::sync::mpsc;
 
 pub struct GatewayModel {
     gateway: Arc<Gateway>,
+    /// How long a title waits after its turn before it is sent; `None`
+    /// sends it at once and never yields (the hermetic tests' default).
+    title_quiet: Option<Duration>,
 }
+
+/// The model the preset names for titles. Replies name `local:default` or
+/// a picked model, so this is how a title request is told apart: the
+/// harness's request carries no purpose.
+pub const TITLE_MODEL: &str = "local:smallest";
+/// The engine's quiet period before a title: a quick follow-up never meets
+/// one.
+pub const TITLE_QUIET: Duration = Duration::from_secs(2);
+/// The error a title that yielded ends with. The harness then gives the
+/// chat its quick title from the first prompt and runs the person's turn.
+pub const YIELDED: &str = "title.yielded";
 
 impl GatewayModel {
     pub fn new(gateway: Arc<Gateway>) -> Self {
-        Self { gateway }
+        Self {
+            gateway,
+            title_quiet: None,
+        }
+    }
+
+    /// Titles yield to the person: each waits `quiet` after its turn, and
+    /// a turn that begins meanwhile, or while the title is being written,
+    /// ends it at once, its model request dropped so the server stops it.
+    pub fn with_title_quiet(mut self, quiet: Duration) -> Self {
+        self.title_quiet = Some(quiet);
+        self
     }
 
     /// The catalogue id a preset's model name stands for.
@@ -120,6 +146,10 @@ fn request(model: Option<String>, req: &ModelRequest) -> StreamRequest {
     }
 }
 
+fn yielded() -> ErrorInfo {
+    ErrorInfo::new(YIELDED, "the title gave way to the person's next prompt")
+}
+
 fn error(message: impl Into<String>) -> ErrorInfo {
     ErrorInfo::new("model_unavailable", message)
 }
@@ -163,8 +193,30 @@ impl ModelClient for GatewayModel {
             }
         };
         let request = request(model, &req);
+        let quiet = self.title_quiet.filter(|_| req.model.trim() == TITLE_MODEL);
         tokio::spawn(async move {
-            let opened = gateway.chat(Caller::Shell, request).await;
+            // A title waits for quiet, and yields to the person's next turn.
+            let mut person = gateway.foreground();
+            person.borrow_and_update();
+            if let Some(quiet) = quiet {
+                tokio::select! {
+                    _ = tokio::time::sleep(quiet) => {}
+                    _ = person.changed() => {
+                        let _ = tx.send(Err(yielded())).await;
+                        return;
+                    }
+                }
+                if cancel.is_cancelled() {
+                    return;
+                }
+            }
+            let opened = tokio::select! {
+                opened = gateway.chat(Caller::Shell, request) => opened,
+                _ = person.changed(), if quiet.is_some() => {
+                    let _ = tx.send(Err(yielded())).await;
+                    return;
+                }
+            };
             let mut stream = match opened {
                 Ok((_, stream)) => stream,
                 Err(e) => {
@@ -176,7 +228,17 @@ impl ModelClient for GatewayModel {
             // The server streams about one token per chunk and reports no
             // usage through the provider, so chunks stand in for tokens.
             let mut chunks: u64 = 0;
-            while let Some(item) = stream.next().await {
+            loop {
+                let item = tokio::select! {
+                    item = stream.next() => item,
+                    // Dropping the stream drops the request: the model
+                    // server stops writing the title.
+                    _ = person.changed(), if quiet.is_some() => {
+                        let _ = tx.send(Err(yielded())).await;
+                        return;
+                    }
+                };
+                let Some(item) = item else { break };
                 if cancel.is_cancelled() {
                     return;
                 }

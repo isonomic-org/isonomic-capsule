@@ -66,6 +66,9 @@ pub type OnWorker = Box<dyn Fn(&str, &Arc<LlamaSupervisor>) + Send + Sync>;
 pub struct Gateway {
     catalogue: Catalogue,
     on_worker: OnWorker,
+    /// Counts the person's turns as they begin, so a background request (a
+    /// title) yields to one: see `agents::model`.
+    foreground: tokio::sync::watch::Sender<u64>,
     /// The llama.cpp server program; `None` when the bundle has none.
     server: Option<PathBuf>,
     gate: Arc<dyn capsule_core::RamGate>,
@@ -126,6 +129,7 @@ impl Gateway {
         Self {
             catalogue: Catalogue::new(manifest, models_dir, slow),
             on_worker: Box::new(|_, _| {}),
+            foreground: tokio::sync::watch::Sender::new(0),
             server,
             gate,
             configure: Box::new(|_| {}),
@@ -166,6 +170,16 @@ impl Gateway {
     pub fn with_machine(mut self, machine: Machine) -> Self {
         self.machine = machine;
         self
+    }
+
+    /// A person's turn has begun: background requests yield to it.
+    pub fn foreground_began(&self) {
+        self.foreground.send_modify(|n| *n = n.wrapping_add(1));
+    }
+
+    /// Changes each time a person's turn begins.
+    pub fn foreground(&self) -> tokio::sync::watch::Receiver<u64> {
+        self.foreground.subscribe()
     }
 
     /// Who is told of each new model worker.

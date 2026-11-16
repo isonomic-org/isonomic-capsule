@@ -196,7 +196,11 @@ async fn run() -> Result<(), AnyError> {
             Arc::clone(&apps),
             Arc::new(capsule_core::SystemClock),
         )),
-        model: Arc::new(agents::GatewayModel::new(Arc::clone(&gateway))),
+        // A title waits for quiet after its turn and yields to the person's
+        // next prompt, so a quick follow-up never waits behind one.
+        model: Arc::new(
+            agents::GatewayModel::new(Arc::clone(&gateway)).with_title_quiet(agents::TITLE_QUIET),
+        ),
         locale,
         profile,
         engine_tools: false,
