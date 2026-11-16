@@ -99,6 +99,7 @@ impl Gateway {
         let reply =
             match call {
                 Call::ModelsList => {
+                    let recommended = self.recommended_id();
                     let models =
                         self.catalogue()
                             .installed_entries()
@@ -108,7 +109,7 @@ impl Gateway {
                                     access.permits(e.meta.id.as_str(), false)
                                 }),
                             })
-                            .map(info)
+                            .map(|e| info(e, recommended.as_deref() == Some(e.meta.id.as_str())))
                             .collect();
                     Reply::Models(models)
                 }
@@ -117,7 +118,8 @@ impl Gateway {
                         WireError::new(ErrorCode::UnknownModel, format!("no model {model}"))
                     })?;
                     isonomic_proto::auth::authorize_model(who, &model, false)?;
-                    Reply::Model(detail(entry, self.state(entry)))
+                    let marked = self.recommended_id().as_deref() == Some(entry.meta.id.as_str());
+                    Reply::Model(detail(entry, self.state(entry), marked))
                 }
                 Call::ModelsStream(request) => {
                     let (model, stream) = self.chat(who, request).await?;

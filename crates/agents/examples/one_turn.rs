@@ -92,6 +92,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut tokens = None;
         while let Some(update) = stream.next().await {
             match update {
+                SessionUpdate::Ended(reason) => {
+                    return Err(format!("the session ended: {reason:?}").into())
+                }
+                SessionUpdate::Gap { .. } => println!("(missed some updates)"),
                 SessionUpdate::Delta(delta) => {
                     first.get_or_insert_with(|| sent.elapsed());
                     print!("{}", delta.text);

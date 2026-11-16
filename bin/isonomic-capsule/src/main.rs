@@ -159,6 +159,7 @@ async fn run() -> Result<(), AnyError> {
         locale,
         profile,
         engine_tools: false,
+        gateway: Some(Arc::clone(&gateway)),
     })
     .await
     .map_err(|e| format!("the agents host did not start: {e:?}"))?;

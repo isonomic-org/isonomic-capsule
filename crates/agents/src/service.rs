@@ -18,15 +18,27 @@ use harness_host::{
     Subscription, Update, UserActionToken,
 };
 use harness_log::SessionStore;
+use isonomic_proto::agents::{EndReason, SessionEnded};
 use isonomic_proto::{Call, ErrorCode, Event, Manifest, Reply, ServerMessage, WireError};
 use tokio::sync::mpsc;
 
-use crate::convert;
+use gateway::Gateway;
+
+use crate::{convert, EngineScopes};
 
 pub struct EngineAgents {
     host: Host,
     store: Arc<dyn SessionStore>,
+    /// Checks the model a session is created with; `None` passes any name
+    /// (a host on a scripted model, in tests).
+    gateway: Option<Arc<Gateway>>,
+    /// Mints the tokens `approvals.user_action` hands the window; `None`
+    /// answers that call `unsupported`.
+    scopes: Option<Arc<EngineScopes>>,
 }
+
+/// The longest model name `sessions.create` takes, as the SDK checks it.
+pub use isonomic_proto::agents::MAX_MODEL_NAME;
 
 fn caller(manifest: Option<&Manifest>) -> Caller {
     match manifest {
@@ -42,8 +54,86 @@ fn done(result: Result<(), HostError>) -> Result<Reply, WireError> {
 impl EngineAgents {
     /// Serve `host`, whose log is `store`. Call [`Host::recover`] before
     /// the broker serves.
-    pub fn new(host: Host, store: Arc<dyn SessionStore>) -> Self {
-        Self { host, store }
+    pub fn new(host: Host, store: Arc<dyn SessionStore>, gateway: Option<Arc<Gateway>>) -> Self {
+        Self {
+            host,
+            store,
+            gateway,
+            scopes: None,
+        }
+    }
+
+    /// Mint `approvals.user_action` tokens with `scopes`, the resolver the
+    /// host verifies them with.
+    pub fn with_scopes(mut self, scopes: Arc<EngineScopes>) -> Self {
+        self.scopes = Some(scopes);
+        self
+    }
+
+    /// The model a session is created with: checked as the SDK checks a
+    /// name, then with the rule `models.stream` applies, the manifest
+    /// first.
+    fn session_model(
+        &self,
+        manifest: Option<&Manifest>,
+        named: Option<String>,
+    ) -> Result<Option<String>, WireError> {
+        let Some(named) = named else {
+            return Ok(None);
+        };
+        let name = isonomic_proto::agents::model_name(&named)?;
+        self.check_model(manifest, name).map(Some)
+    }
+
+    /// The manifest first, so an app learns nothing about models it may
+    /// not use; then the gateway's rule, when there is a gateway.
+    fn check_model(&self, manifest: Option<&Manifest>, id: &str) -> Result<String, WireError> {
+        if let Some(m) = manifest {
+            let app = isonomic_proto::auth::Caller::App {
+                id: &m.id,
+                capabilities: &m.capabilities,
+            };
+            isonomic_proto::auth::authorize_model(app, id, false)?;
+        }
+        match &self.gateway {
+            Some(gateway) => gateway.check_session_model(manifest, id),
+            None => Ok(id.to_string()),
+        }
+    }
+
+    /// An app's own stored preset names its model too, and the same rule
+    /// holds: an app cannot reach a model through a preset it stored.
+    /// Built-in presets are the engine's choice and are not checked, nor
+    /// are the engine's own choices `local:default` and `local:smallest`.
+    ///
+    /// Every model the preset names is checked: its reply model, unless the
+    /// session names its own, and its title model, which runs either way.
+    async fn check_preset_model(
+        &self,
+        manifest: Option<&Manifest>,
+        who: &Caller,
+        preset: &harness_core::PresetId,
+        reply_overridden: bool,
+    ) -> Result<(), WireError> {
+        if manifest.is_none() {
+            return Ok(());
+        }
+        let Ok(stored) = self.host.get_preset(who, preset).await else {
+            // The host answers an unknown preset itself.
+            return Ok(());
+        };
+        let (Some(_), Some(parsed)) = (&stored.owner, &stored.preset) else {
+            return Ok(());
+        };
+        let reply = (!reply_overridden).then_some(parsed.model.id.as_str());
+        let title = parsed.model.title_model.as_deref();
+        for named in reply.into_iter().chain(title) {
+            let id = named.strip_prefix("local:").unwrap_or(named);
+            if !matches!(id, "default" | "smallest") {
+                self.check_model(manifest, id)?;
+            }
+        }
+        Ok(())
     }
 
     pub fn host(&self) -> &Host {
@@ -70,15 +160,24 @@ impl EngineAgents {
         }
     }
 
-    async fn reply(&self, who: &Caller, call: Call) -> Result<AgentsAnswer, WireError> {
+    async fn reply(
+        &self,
+        manifest: Option<&Manifest>,
+        call: Call,
+    ) -> Result<AgentsAnswer, WireError> {
+        let who = &caller(manifest);
         let host = &self.host;
         let err = convert::error;
         let reply = match call {
             Call::SessionsCreate(c) => {
+                let overridden = c.model.is_some();
+                self.check_preset_model(manifest, who, &c.preset, overridden)
+                    .await?;
                 let opts = CreateOptions {
                     title: c.title,
                     location_opt_in: c.location_opt_in,
                     limits: None,
+                    model: self.session_model(manifest, c.model)?,
                 };
                 let session = host
                     .create_session(who, &c.preset, opts)
@@ -139,7 +238,7 @@ impl EngineAgents {
             }
             Call::SessionsSubscribe(s) => {
                 let sub = host.subscribe(who, &s.session, s.from_seq).await;
-                return Ok(AgentsAnswer::Stream(stream(sub.map_err(err)?)));
+                return Ok(AgentsAnswer::Stream(stream(sub.map_err(err)?, s.session)));
             }
             Call::ApprovalsList(a) => {
                 let all = host.list_approvals(who).await.map_err(err)?;
@@ -153,6 +252,21 @@ impl EngineAgents {
                 let decision = convert::decision(d.decision);
                 let decided = host.decide_approval(who, &d.session, &d.approval, decision, token);
                 done(decided.await)?
+            }
+            // `proto::auth` lets only the shell mint one.
+            Call::ApprovalsUserAction(m) => {
+                let Some(scopes) = &self.scopes else {
+                    let message = "user actions are not minted here";
+                    return Err(WireError::new(ErrorCode::Unsupported, message));
+                };
+                let decider = match &m.app {
+                    None => Caller::shell(),
+                    Some(app) => Caller::app(app.as_str(), AppKind::FirstParty),
+                };
+                let token = scopes
+                    .mint(&decider, &m.session, &m.approval)
+                    .map_err(|e| WireError::new(ErrorCode::Internal, e.to_string()))?;
+                Reply::UserAction { token: token.0 }
             }
             Call::QuestionsAnswer(q) => {
                 let answer = AnswerInput {
@@ -196,7 +310,8 @@ impl EngineAgents {
             },
             Call::ArtifactsGet(g) => {
                 let version = host.get_artifact(who, &g.artifact, g.version).await;
-                Reply::Artifact(Box::new(convert::artifact(version.map_err(err)?)))
+                let chunk = convert::artifact(version.map_err(err)?, g.offset, g.length)?;
+                Reply::Artifact(Box::new(chunk))
             }
             Call::ArtifactsList(l) => {
                 Reply::Artifacts(host.list_artifacts(who, &l.session).await.map_err(err)?)
@@ -221,7 +336,7 @@ impl broker::Agents for EngineAgents {
         Box::pin(async move {
             let method = call.method();
             let app = manifest.map_or("shell", |m| m.id.as_str());
-            let answer = self.reply(&caller(manifest), call).await;
+            let answer = self.reply(manifest, call).await;
             if let Err(e) = &answer {
                 refused(app, method, e);
             }
@@ -244,8 +359,9 @@ fn refused(app: &str, method: &str, e: &WireError) {
 }
 
 /// Forward a session's events, and its live deltas between them, as
-/// `session_event` and `live_delta` events on one subscription.
-fn stream(mut sub: Subscription) -> Starter {
+/// `session_event` and `live_delta` events on one subscription, then
+/// `session_ended` when the host ends it.
+fn stream(mut sub: Subscription, session: SessionId) -> Starter {
     Box::new(
         move |subscription: u64, outbox: mpsc::Sender<ServerMessage>| {
             tokio::spawn(async move {
@@ -263,6 +379,17 @@ fn stream(mut sub: Subscription) -> Starter {
                         return;
                     }
                 }
+                // The host ends a subscription only when its session is
+                // purged, so the app can tell it from a dropped connection.
+                let event = Event::SessionEnded(SessionEnded {
+                    session,
+                    reason: EndReason::Purged,
+                });
+                let message = ServerMessage::Event {
+                    subscription,
+                    event,
+                };
+                let _ = outbox.send(message).await;
             })
         },
     )

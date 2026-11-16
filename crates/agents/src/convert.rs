@@ -5,6 +5,7 @@
 use harness_host as host;
 use harness_preset::Severity;
 use isonomic_proto::agents as wire;
+use isonomic_proto::blobs::CHUNK_BYTES;
 use isonomic_proto::{Bytes, ErrorCode, WireError};
 
 pub(crate) fn error(e: host::HostError) -> WireError {
@@ -65,6 +66,7 @@ pub(crate) fn summary(s: host::SessionSummary) -> wire::SessionSummary {
         created_at: s.created_at,
         updated_at: s.updated_at,
         last_seq: s.last_seq,
+        model: s.model,
     }
 }
 
@@ -149,9 +151,59 @@ pub(crate) fn preset_detail(p: host::StoredPreset) -> wire::PresetDetail {
     }
 }
 
-pub(crate) fn artifact(a: host::ArtifactVersion) -> wire::ArtifactVersion {
-    wire::ArtifactVersion {
+/// One chunk of an artifact's body: at most `CHUNK_BYTES` from `offset`,
+/// fewer when `length` asks for fewer. Reading at or past the end of a
+/// body that is not empty is `bad_request`, not an empty chunk.
+pub(crate) fn artifact(
+    a: host::ArtifactVersion,
+    offset: u64,
+    length: Option<u64>,
+) -> Result<wire::ArtifactVersion, WireError> {
+    let len = a.bytes.len() as u64;
+    if offset > len || (offset == len && len > 0) {
+        let message = format!("offset {offset} is past the end of the {len}-byte body");
+        return Err(WireError::new(ErrorCode::BadRequest, message));
+    }
+    let chunk = length.map_or(CHUNK_BYTES, |l| l.min(CHUNK_BYTES));
+    let end = offset.saturating_add(chunk).min(len);
+    Ok(wire::ArtifactVersion {
         meta: a.meta,
-        bytes: Bytes(a.bytes),
+        bytes: Bytes(a.bytes[offset as usize..end as usize].to_vec()),
+        offset,
+    })
+}
+
+#[cfg(test)]
+mod artifact_tests {
+    use super::*;
+
+    fn version(len: usize) -> host::ArtifactVersion {
+        let meta: wire::ArtifactEvent = serde_json::from_value(serde_json::json!({
+            "artifact": "r-1", "version": 1, "op": "create", "title": "Notes",
+            "media_type": "text/plain", "blob": "b-1", "bytes": len, "call": "c-1"
+        }))
+        .unwrap();
+        host::ArtifactVersion {
+            meta,
+            bytes: vec![7; len],
+        }
+    }
+
+    #[test]
+    fn a_body_comes_in_chunks_and_reading_past_its_end_is_refused() {
+        let len = CHUNK_BYTES as usize + 10;
+        let first = artifact(version(len), 0, None).unwrap();
+        assert_eq!(
+            (first.offset, first.bytes.0.len()),
+            (0, CHUNK_BYTES as usize)
+        );
+        let rest = artifact(version(len), CHUNK_BYTES, None).unwrap();
+        assert_eq!((rest.offset, rest.bytes.0.len()), (CHUNK_BYTES, 10));
+        let few = artifact(version(len), 4, Some(3)).unwrap();
+        assert_eq!(few.bytes.0.len(), 3);
+        let past = artifact(version(len), len as u64, None).unwrap_err();
+        assert_eq!(past.code, ErrorCode::BadRequest);
+        // An empty body reads as one empty chunk.
+        assert!(artifact(version(0), 0, None).unwrap().bytes.0.is_empty());
     }
 }
