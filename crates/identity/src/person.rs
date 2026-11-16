@@ -21,9 +21,10 @@ use std::sync::{Arc, Mutex};
 
 use capsule_core::Clock;
 use id_core::log::{Commitment, Kind, Log, Op};
-use id_core::{KeyAlg, PrincipalId, Signed, Signer};
+use id_core::{KeyAlg, PrincipalId, Signer};
 use id_keys::{KeyError, KeyHandle, KeyStore, StoredKey};
 
+use crate::directory::Logs;
 use crate::recovery::{new_seed, recovery_public_key, SEED_BYTES};
 use crate::secrets::Secrets;
 
@@ -60,6 +61,8 @@ pub struct Person {
     capsule_id: String,
     open: OpenBackend,
     clock: Arc<dyn Clock>,
+    /// Every log the engine has accepted, the person's own included.
+    logs: Arc<Logs>,
     /// The ID once known; the lock also keeps two first calls from both
     /// making one.
     known: Mutex<Option<PrincipalId>>,
@@ -74,8 +77,14 @@ impl Person {
             capsule_id: capsule_id.to_string(),
             open,
             clock,
+            logs: Arc::new(Logs::open(root)),
             known: Mutex::new(None),
         }
+    }
+
+    /// The Capsule's directory of accepted logs.
+    pub fn logs(&self) -> &Arc<Logs> {
+        &self.logs
     }
 
     /// The person's ID, and whether this call made it.
@@ -84,14 +93,20 @@ impl Person {
         if let Some(id) = known.as_ref() {
             return Ok((id.clone(), false));
         }
-        if let Some(log) = self.read()? {
-            *known = Some(log.id().clone());
-            return Ok((log.id().clone(), false));
-        }
-        let log = self.make()?;
-        self.write(&log)?;
+        let (log, created) = match self.read()? {
+            Some(log) => (log, false),
+            None => {
+                let log = self.make()?;
+                self.write(&log)?;
+                (log, true)
+            }
+        };
+        // The person's own log is in the directory like any other. A copy
+        // that parts ways with the one accepted before is kept as a fork
+        // for the person to decide (`Logs::forks`); the ID itself stands.
+        let _ = self.logs.accept(log.entries());
         *known = Some(log.id().clone());
-        Ok((log.id().clone(), true))
+        Ok((log.id().clone(), created))
     }
 
     fn label(&self, what: &str) -> String {
@@ -130,41 +145,18 @@ impl Person {
     }
 
     fn read(&self) -> Result<Option<Log>, IdentityError> {
-        let text = match std::fs::read_to_string(&self.file) {
-            Ok(text) => text,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-            Err(e) => return Err(IdentityError::Unreadable(e.to_string())),
+        let unreadable = |e: crate::files::FileError| IdentityError::Unreadable(e.to_string());
+        let Some(entries) = crate::files::read_log(&self.file).map_err(unreadable)? else {
+            return Ok(None);
         };
-        let entries = text
-            .lines()
-            .map(|line| unhex(line.trim()).and_then(|b| Signed::from_bytes(&b).ok()))
-            .collect::<Option<Vec<_>>>()
-            .ok_or_else(|| IdentityError::Unreadable("an entry does not decode".into()))?;
-        Log::open(entries, &[])
+        Log::open(entries, &crate::directory::checks())
             .map(Some)
             .map_err(|e| IdentityError::Unreadable(format!("{e:?}")))
     }
 
     fn write(&self, log: &Log) -> Result<(), IdentityError> {
-        let save = |e: std::io::Error| IdentityError::Save(e.to_string());
-        let mut text = String::new();
-        for entry in log.entries() {
-            let bytes = entry
-                .to_bytes()
-                .map_err(|e| IdentityError::Save(format!("{e:?}")))?;
-            text.push_str(&hex(&bytes));
-            text.push('\n');
-        }
-        let dir = self.file.parent().expect("identity/");
-        std::fs::create_dir_all(dir).map_err(save)?;
-        let part = self.file.with_extension("log.part");
-        {
-            use std::io::Write;
-            let mut file = std::fs::File::create(&part).map_err(save)?;
-            file.write_all(text.as_bytes()).map_err(save)?;
-            file.sync_all().map_err(save)?;
-        }
-        std::fs::rename(&part, &self.file).map_err(save)
+        crate::files::write_log(&self.file, log.entries())
+            .map_err(|e| IdentityError::Save(e.to_string()))
     }
 }
 
@@ -178,18 +170,4 @@ fn key(store: &Arc<dyn KeyStore>, label: &str) -> Result<StoredKey, IdentityErro
         }
         Err(e) => Err(failed(e)),
     }
-}
-
-fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
-}
-
-fn unhex(text: &str) -> Option<Vec<u8>> {
-    if !text.len().is_multiple_of(2) {
-        return None;
-    }
-    (0..text.len())
-        .step_by(2)
-        .map(|i| u8::from_str_radix(text.get(i..i + 2)?, 16).ok())
-        .collect()
 }

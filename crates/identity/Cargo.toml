@@ -9,6 +9,7 @@ publish.workspace = true
 broker.workspace = true
 capsule-core.workspace = true
 id-core.workspace = true
+id-eth.workspace = true
 id-keys.workspace = true
 isonomic-proto.workspace = true
 ring.workspace = true
@@ -21,7 +22,6 @@ security-framework.workspace = true
 [dev-dependencies]
 # The identity library's own checks, built here with this repo's lockfile.
 id-check.workspace = true
-id-eth.workspace = true
 id-grants.workspace = true
 id-resource.workspace = true
 tempfile.workspace = true

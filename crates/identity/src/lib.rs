@@ -6,6 +6,8 @@
 //! (Linux, in CI and development) it is unavailable, in plain words; tests
 //! give it the identity library's in-memory store instead.
 
+pub mod directory;
+mod files;
 mod person;
 pub mod recovery;
 mod secrets;

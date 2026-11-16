@@ -20,6 +20,25 @@ Newest first. This file is the engine's status from now on. The history of each 
 
 New entries go at the top of this file, naming the area; older ones move to their area's file when this one nears 20 KB. The spec stays in `isonomic-desktop/docs/architecture/`.
 
+## 2026-11-16 · Identity: the directory of accepted logs, kept (R7, step 2)
+
+- `identity::directory::Logs` keeps every key log the engine accepts across restarts: the person's own now, and each app's and agent's from step 3 on.
+- **It is the identity library's `Directory`, as it decides:**
+  - a new log or a longer continuation is kept;
+  - an older copy changes nothing;
+  - a log that parts ways is refused as a fork.
+- **Kept:** one file per identity in `identity/logs/`, named by the ID's digest, in the same line format as the person's log. The file is written before the directory in memory changes (persist, then publish), and every file is verified again at start. Logs are verified with the Ethereum binding checker, so a log with a binding verifies.
+- **A fork is never resolved here.** The competing log is kept whole in `identity/forks/`, with where it parts and whether a recovery key signed it, and the known log stays in force. Showing it to the person needs a wire call that does not exist yet: the smallest would be a shell-only `identity.forks {}` listing `{ id, at, by_recovery }`, for after version 1's first-run step.
+- **A kept log that no longer verifies** at start is moved to `identity/unreadable/`, never deleted. The engine's log says so.
+- `Logs::version` goes up on every change, for step 4's `VersionedWorld`. `Logs` answers `KeyResolver` for grant checks.
+- **Checked:**
+  - a log is kept and comes back after a restart;
+  - a longer one replaces it while an older copy changes nothing, and the version moves only on a change;
+  - a fork signed by the recovery kit is refused, kept whole and listed, and the known branch stays after a restart;
+  - a damaged kept log is set aside and said, and the others load;
+  - a log with an Ethereum binding verifies;
+  - the person's own log is in the directory.
+
 ## 2026-11-16 · Identity: the person's Isonomic ID at first need (R7, step 1)
 
 - New crate `identity`, on the identity library at `ID_REF` `d39a507` (frozen at version 1, never changed from here). `identity.get` (shell only, isonomic-sdk #34 at `d530e54`) answers the person's ID and whether that call made it; `identity_unavailable` carries the reason in plain words.
