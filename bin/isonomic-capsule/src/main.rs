@@ -27,6 +27,13 @@ async fn run() -> Result<(), AnyError> {
     let paths = &config.paths;
     paths.create_dirs()?;
     log(format!("capsule directory: {}", paths.root().display()));
+    // Before anything opens the data: a Capsule from a newer build, or on
+    // another database major version, is refused and left as it is.
+    let marker = capsule_core::format::open(paths, env!("CARGO_PKG_VERSION"))?;
+    log(format!(
+        "capsule format {} (made by {}, opened by {})",
+        marker.format, marker.created_by, marker.last_opened_by
+    ));
 
     let hardware: Arc<dyn HardwareSource> = Arc::new(SystemHardware);
     if let Some(raw) = &config.profile_override_invalid {

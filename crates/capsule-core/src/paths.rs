@@ -48,6 +48,11 @@ impl CapsulePaths {
         &self.root
     }
 
+    /// The marker naming the Capsule's data format (`format::open`).
+    pub fn capsule_marker(&self) -> PathBuf {
+        self.root.join("capsule.json")
+    }
+
     /// The embedded state store.
     pub fn registry_db(&self) -> PathBuf {
         self.root.join("registry.db")
