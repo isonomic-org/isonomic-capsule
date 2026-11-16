@@ -56,7 +56,7 @@ pub fn install(paths: &CapsulePaths, marker: &Marker, total_memory_bytes: u64) -
         engine: short(option_env!("ISONOMIC_ENGINE_COMMIT").unwrap_or_default()),
     };
     let system = System {
-        macos: reports::system::macos_version(),
+        os_version: reports::system::macos_version(),
         profile: None,
         memory_gb: Some(reports::system::memory_gb(total_memory_bytes)),
         capsule_format: Some(marker.format),

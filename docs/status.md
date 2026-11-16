@@ -11,6 +11,17 @@ Newest first. This file is the engine's status from now on. The history of each 
 - [Packaging](status/packaging.md): bundled services and the app bundle.
 - [Later modules](status/engine-later.md): reserved crates.
 
+## 2026-11-16 · Problem reports: on the SDK's shared crate
+
+- **`SDK_REF` moves to isonomic-sdk `fedba7d`**: the shared crate `isonomic-reports` (landed at `f1b7376`) with its follow-up (UI at `b4c9670`). It is the window's crate too. Quoted text of any length is now removed from every scrubbed field, and a person's ID becomes `[id removed]` at any length.
+- **The engine now uses it** for the format types, the scrubber (the key rule included), backtraces and the generic log rules. The engine's own copies are deleted. `System.macos` is now `os_version`; format 1 still writes it as `macos`.
+- **What stays here:** which rules each service follows (`filter::Source::of`), the model server's prefix list (passed to `allow_listed`), the store, the reporter, the log ring, the panic hook and the watchers.
+- **Checked:**
+  - the planted-content tests pass on the shared rules;
+  - a refused Capsule gets no report;
+  - conformance passes 31 of 31.
+- **Needs the identity stack first.** An `SDK_REF` past `90eb83f` brings in the `identity.get` conformance check, which only the identity stack serves, so this follows step 4.
+
 ## 2026-11-16 · Problem reports: the agents host's and the gateway's lines are in the log ring
 
 - The engine's log ring moved to `capsule_core::log`, so every engine crate writes into the one ring a panic report carries. `reports::log` re-exports it.
@@ -44,31 +55,6 @@ Newest first. This file is the engine's status from now on. The history of each 
   - names and the keep limit match the window's;
   - a refused Capsule gets no report.
 - Lines the agents host and the gateway printed directly were added to the ring in the entry above.
-
-## 2026-11-16 · Packaging: every bundled file runs on macOS 13.3
-
-- **Found on the Intel Mac:** the release refused the disk image because the database said it needs macOS 26.0 (both architectures) and the cache 15.0. The model server was already 13.3.
-- **The cache** was built on the Mac with no deployment target, so it took that Mac's macOS. Its recipe now sets `MACOSX_DEPLOYMENT_TARGET=13.3` and `-mmacosx-version-min=13.3`.
-- **The database** was the vendor's prebuilt 18.4.0, whose minimum follows its build machines. Read here from the archives:
-  - 18.0.0 and 18.1.0 say 13.0 on Intel and 15.0 on Apple Silicon;
-  - 18.3.0 says 15.0 on both;
-  - 18.4.0 says 26.0 on both.
-
-  None targets 13.3 on Apple Silicon, and its tree carries OpenSSL, libxml and readline from the build machine.
-- **On the Mac, the database is now built by `fetch-sidecars` from the official 18.4 source** (hash checked against the project's published `.sha256`), for macOS 13.3:
-  - only what the engine uses: no ICU, readline, OpenSSL or XML, so it links only the system's own libraries;
-  - layout and settings as before (`--without-icu`, `initdb --locale=C --encoding=UTF8`, default page and WAL sizes), so existing Capsules open unchanged;
-  - install names rewritten relative to each file (`@loader_path`), as the vendor's were, and each file signed ad hoc;
-  - Apple Silicon cross-built from an Intel Mac (`--host=aarch64-apple-darwin`).
-
-  The developer tools (clang, bison, flex, perl) are needed. The Linux tree stays the prebuilt download.
-- **`minimumMacos: "13.3"` in `sidecars.json`.** `fetch-sidecars` reads every Mach-O file it installs, every slice, and refuses (and removes) an install that says it needs a newer macOS, naming each file, architecture and minimum. An install already in place that fails the check is built again rather than kept.
-- **The manifest takes a build per target** (the Mac's built from source, Linux's a download), and a build may produce a directory tree.
-- **Tested:** thin and universal files' minimums; a tree with one too-new library refused and removed; a tree built from source per Mac target; a stale install rebuilt; no check without a stated minimum or off the Mac. The recipe's configure options build here on Linux; the macOS steps are for the Mac.
-- **Built once, then cached:** an install's stamp holds the download's hash and, for a build, the digest of its recipe. A release build compiles the database only when its source or its options change. A clean build takes 92 s here (4 cores, Linux); on the Intel Mac, expect about 3 to 5 minutes per architecture, once.
-- **Existing Capsules open unchanged:** a data directory made by the prebuilt 18.4.0 opens under the 18.4 built from source. An app's schema and row written under the old one are read, and written to, under the new one (`crates/appdb/tests/database_build.rs`, opt-in, run here as a normal user with both builds).
-- **Licences:** each sidecar names its licence file (`licenseFiles`); `fetch-sidecars` keeps the text and refuses an archive without it, then writes `sidecars/NOTICES.txt` for the bundle to ship. What each licence asks is in [docs/third-party-notices.md](third-party-notices.md).
-- **Not changed: the product's minimum, 13.3.**
 
 ## Known limitations of version 1
 
