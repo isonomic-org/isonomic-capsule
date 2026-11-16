@@ -1,6 +1,7 @@
 //! A registry damaged in different places gives back what it still can:
 //! the header (nothing), one page of the chats table (all but that page's
-//! chats), the index only (everything). The set-aside copy is never written.
+//! chats), one page of one chat's history (that chat, marked as missing
+//! part of it, and every other chat whole), the index only (everything). The set-aside copy is never written.
 //! The registry is built with the engine's own table definitions.
 
 use std::path::Path;
@@ -195,5 +196,76 @@ fn a_damaged_index_costs_nothing() {
         set.message().contains("300 chats recovered."),
         "{}",
         set.message()
+    );
+}
+
+/// One chat with a long history, added after the rest, so its later events
+/// fill pages of their own; the pages they fill, first and last.
+fn long_history(db: &Path, chat: &str, events: usize) -> (usize, usize) {
+    let conn = Connection::open(db).unwrap();
+    let pages = |c: &Connection| {
+        c.query_row("PRAGMA page_count", [], |r| r.get::<_, i64>(0))
+            .unwrap() as usize
+    };
+    let before = pages(&conn);
+    let payload = "q".repeat(300);
+    for seq in EVENTS..EVENTS + events {
+        conn.execute(
+            "INSERT INTO session_events VALUES (?1, ?2, 1, ?3)",
+            rusqlite::params![chat, seq as i64, payload],
+        )
+        .unwrap();
+    }
+    (before + 1, pages(&conn))
+}
+
+#[test]
+fn a_damaged_page_in_one_chats_history_costs_only_part_of_that_chat() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = dir.path().join("registry.db");
+    registry(&db);
+    let long = 200;
+    let (first, last) = long_history(&db, "ses_0150", long);
+    assert!(
+        last - first >= 10,
+        "the long history spans pages {first}..{last}"
+    );
+    spoil_page(&db, (first + last) / 2);
+    let set = set_aside(dir.path());
+    let got = &set.salvage;
+    assert_eq!((got.chats, got.chats_lost), (CHATS as u64, 0), "{got:?}");
+    assert_eq!(got.chats_partial, 1, "{got:?}");
+
+    let conn = Connection::open(&db).unwrap();
+    let events = |chat: &str| -> usize {
+        conn.query_row(
+            "SELECT count(*) FROM session_events WHERE session = ?1",
+            [chat],
+            |r| r.get::<_, i64>(0),
+        )
+        .unwrap() as usize
+    };
+    let kept = events("ses_0150");
+    assert!(kept > EVENTS && kept < EVENTS + long, "{kept} events kept");
+    // Its events on both sides of the damaged page come back.
+    let newest: i64 = conn
+        .query_row(
+            "SELECT max(seq) FROM session_events WHERE session = 'ses_0150'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        newest as usize,
+        EVENTS + long - 1,
+        "the events past the damage"
+    );
+    for other in ["ses_0000", "ses_0149", "ses_0151", "ses_0299"] {
+        assert_eq!(events(other), EVENTS, "{other} is whole");
+    }
+    let message = set.message();
+    assert!(
+        message.contains("300 chats (1 missing part of their history) recovered."),
+        "{message}"
     );
 }

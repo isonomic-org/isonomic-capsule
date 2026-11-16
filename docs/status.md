@@ -30,6 +30,7 @@ Newest first. This file is the engine's status from now on. The history of each 
 - **Checked, on a registry built with the engine's own table definitions:**
   - a damaged header gives back nothing, and says so;
   - one damaged page of the chats table costs only that page's chats, while every approval, every stored file and every recovered chat's history comes back;
+  - a damaged page inside one chat's history: that chat comes back with the events on both sides of the page and is reported as missing part of its history, and every other chat is whole;
   - a damaged index costs nothing;
   - in each case the set-aside copy is unchanged byte for byte, no working copy is left, and the new registry passes the check.
 
