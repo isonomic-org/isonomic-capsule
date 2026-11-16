@@ -238,3 +238,27 @@ fn an_archive_without_its_licence_is_refused() {
         "says what is there: {text}"
     );
 }
+
+#[test]
+fn an_install_from_before_its_licence_was_named_is_redone_and_a_missing_one_is_named() {
+    let root = tempfile::tempdir().unwrap();
+    let payload = source(MacVersion(13, 3));
+    let mut manifest = manifest(&sha256_hex(&payload), Some("13.3"));
+    let served = Served(payload, AtomicU32::new(0));
+    install_one(root.path(), &mut manifest, 0, ARM, false, &served).unwrap();
+    let dest = destination(root.path(), &manifest, "postgres", ARM);
+    // As an install made before the manifest named its licence files.
+    std::fs::remove_file(dest.join(crate::install::LICENSE)).unwrap();
+    let (_, missing) = crate::notices::notice(root.path(), &manifest);
+    assert_eq!(
+        missing,
+        ["postgres"],
+        "an installed program without its licence"
+    );
+
+    let again = install_one(root.path(), &mut manifest, 0, ARM, false, &served).unwrap();
+    assert_eq!(again, Outcome::Installed, "not current without its licence");
+    assert!(dest.join(crate::install::LICENSE).is_file());
+    let (_, missing) = crate::notices::notice(root.path(), &manifest);
+    assert!(missing.is_empty(), "{missing:?}");
+}

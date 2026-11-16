@@ -11,6 +11,13 @@ Newest first. This file is the engine's status from now on. The history of each 
 - [Packaging](status/packaging.md): bundled services and the app bundle.
 - [Later modules](status/engine-later.md): reserved crates.
 
+## 2026-11-16 · Packaging: every bundled program's licence is in the notice, or the fetch fails
+
+- On the Mac run of `fetch-sidecars`, the model server had no licence text in `NOTICES.txt`. Its install predated `licenseFiles`, and its stamp still matched, so it was never installed again.
+- **An install without its licence text is no longer current.** When the manifest names licence files and the install has none, it is installed again. The model server's archive carries `LICENSE`.
+- **`fetch-sidecars` now fails** when any bundled program installed for this build has no licence text. This includes one whose manifest entry names no licence files. Programs installed for no target are not in the build and are not named. A release build cannot go out without every licence.
+- Checked: an install with its licence removed is named as missing, then installed again with it, after which nothing is missing; the Linux fetch passes.
+
 ## 2026-11-16 · Problem reports: the engine writes its own, in the window's format 1
 
 - **New crate `reports`.** The engine writes reports into the Capsule's `reports/pending/`, named and shaped as the window's own (format 1, `<millis>-<kind>.json`), so the window lists, shows and prunes them with its own. Each is written to a `.part` file and renamed. At most 20 are kept. Nothing is sent; no wire change.

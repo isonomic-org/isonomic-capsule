@@ -214,7 +214,10 @@ pub fn install_one(
         // A tree in place that needs a newer macOS (built before the
         // recipe targeted the minimum, say) is not current: it is removed
         // here and installed again below.
-        if stamped && verify_minimum(manifest, &dest, triple, &label).is_ok() {
+        // One installed before the manifest named its licence files has no
+        // licence text for the notice: it is installed again too.
+        let licensed = sidecar.license_files.is_none() || dest.join(LICENSE).is_file();
+        if stamped && licensed && verify_minimum(manifest, &dest, triple, &label).is_ok() {
             verify_arch(&dest.join(&program), triple, &label)?;
             return Ok(Outcome::AlreadyCurrent);
         }
