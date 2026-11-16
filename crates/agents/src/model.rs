@@ -152,6 +152,29 @@ fn request(model: Option<String>, req: &ModelRequest) -> StreamRequest {
     }
 }
 
+/// Shortly after a stop, wait until the model server has ended the stopped
+/// reply, so this one gets the conversation's slot; without a slot list,
+/// wait about one token gap instead ([`crate::settle`]).
+async fn after_stop(gateway: &Gateway, model: Option<&str>, settle: &crate::settle::Settle) {
+    use gateway::slots::SlotWait;
+    let Some(model) = model else { return };
+    match gateway.settle_after_stop(model).await {
+        None => {}
+        Some(SlotWait::Idle(waited)) => capsule_core::log::line(&format!(
+            "reply: the model server's slots were free after {} ms",
+            waited.as_millis()
+        )),
+        Some(SlotWait::StillBusy) => capsule_core::log::line(&format!(
+            "reply: a slot was still working after {} ms; sending anyway",
+            gateway::slots::LIMIT.as_millis()
+        )),
+        Some(SlotWait::Unavailable(why)) => {
+            capsule_core::log::line(&format!("reply: no slot list ({why}); waiting a token gap"));
+            settle.settle().await;
+        }
+    }
+}
+
 fn yielded() -> ErrorInfo {
     ErrorInfo::new(YIELDED, "the title gave way to the person's next prompt")
 }
@@ -199,6 +222,7 @@ impl ModelClient for GatewayModel {
                 return Box::pin(Events(rx));
             }
         };
+        let model_id = model.clone();
         let request = request(model, &req);
         let quiet = self.title_quiet.filter(|_| is_title(&req));
         tokio::spawn(async move {
@@ -225,7 +249,7 @@ impl ModelClient for GatewayModel {
             } else {
                 // A reply right after a stop waits for the stopped reply's
                 // slot, which holds the conversation, to be freed.
-                settle.settle().await;
+                after_stop(&gateway, model_id.as_deref(), &settle).await;
             }
             let opened = tokio::select! {
                 opened = gateway.chat(Caller::Shell, request) => opened,

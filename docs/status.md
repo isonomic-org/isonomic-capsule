@@ -13,6 +13,18 @@ Newest first. This file is the engine's status from now on. The history of each 
 - [Problem reports](status/reports.md): the engine's own reports, the log ring, the shared crate.
 - [Later modules](status/engine-later.md): reserved crates.
 
+## 2026-11-16 · Agents: after a stop, the next reply waits until the model server has ended the stopped one
+
+- **#79 did not hold on the Mac.** A continue straight after a stop still went to slot 1 and read 268 prompt tokens (2.97 s), so the cause was confirmed. No timed wait ran: the continue came later than #79's window, yet slot 0 was still busy.
+- **What the engine does now:** a reply sent within 3 s of a stop first asks the model server's own slot list (`GET /slots`, with the launch's key) until no slot is working. It asks every 20 ms, for at most 1 s (`gateway::slots`). The server then gives it the slot whose cache matches it best, which is the conversation's. The engine logs `reply: the model server's slots were free after N ms`.
+  - If a slot is still working at 1 s, the reply goes anyway, and the log says so.
+  - If the server gives no slot list, the engine waits about one token gap instead (#79's rule), and the log says why.
+- **The certain fix needs the inference repo.** That fix is to name the slot in the request (the server's `id_slot`), so a continue simply queues behind the stopped task on its own slot. But the provider builds the request body from `ChatRequest`, which is frozen and has no such field. It is a request to isonomic-inference, through the orchestrator.
+- **Checked:**
+  - against a local stand-in for the slot list: the reply waits until the stopped task has ended, it waits no longer than the limit, and a refused or missing slot list is said so, with the launch's key checked;
+  - the stop test still passes, on the fallback, since the fake model server has no slot list.
+- **The Mac check:** `turn_stages`'s stop-then-continue case now fails unless the continue lands on prompt 1's slot and evaluates fewer than 64 prompt tokens. It prints `continue: slot N (T prompt tokens); the conversation's slot is M`.
+
 ## 2026-11-16 · Agents: a continue after a stop lands on the conversation's slot
 
 - **What the Mac measured:** a continue straight after a stop reached first text in about 5 s in three of five runs, and in 0.2 s in the other two.

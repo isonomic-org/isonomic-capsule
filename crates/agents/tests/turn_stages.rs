@@ -26,7 +26,9 @@
 //!
 //! A third chat stops its second prompt at the first text and continues at
 //! once, as the self-check does, and prints the slot the continue took and
-//! how many prompt tokens it read, with the engine's `reply:` lines.
+//! how many prompt tokens it read, with the engine's `reply:` lines. It
+//! fails if the continue took another slot than the conversation's, or read
+//! 64 prompt tokens or more.
 //!
 //! It fails if the second prompt sent at once reaches its first text later
 //! than one and a half times the after-title case plus a second: a person's
@@ -110,6 +112,34 @@ fn new_lines(before: &[String], now: &[String]) -> Vec<String> {
         .find(|&k| before[before.len() - k..] == now[..k])
         .unwrap_or(0);
     now[overlap..].to_vec()
+}
+
+/// The model server's timings in `lines`: (slot, prompt tokens evaluated),
+/// from its `print_timing: id N | task M |` lines and the `prompt eval time
+/// = … / T tokens` that follows each.
+fn timings(lines: &[String]) -> Vec<(u32, u32)> {
+    let number = |text: &str| -> Option<u32> {
+        let digits: String = text
+            .trim_start()
+            .chars()
+            .take_while(|c| c.is_ascii_digit())
+            .collect();
+        digits.parse().ok()
+    };
+    let mut slot = None;
+    let mut out = Vec::new();
+    for line in lines {
+        if let Some(rest) = line.split("print_timing: id").nth(1) {
+            slot = number(rest);
+        }
+        if let (Some(s), Some(rest)) = (slot, line.split("prompt eval time").nth(1)) {
+            if let Some(tokens) = rest.split('/').nth(1).and_then(number) {
+                out.push((s, tokens));
+                slot = None;
+            }
+        }
+    }
+    out
 }
 
 /// The model server lines that say where a turn's time went.
@@ -356,6 +386,7 @@ async fn where_a_turns_time_goes() {
     let session = agents.create("chat").await.unwrap();
     let mut stream = agents.subscribe(&session, 0).await.unwrap();
     let mut continue_first = None;
+    let mut steps: Vec<Vec<String>> = Vec::new();
     for (n, step) in ["prompt 1", "prompt 2, stopped", "continue"]
         .iter()
         .enumerate()
@@ -409,15 +440,39 @@ async fn where_a_turns_time_goes() {
             }
         }
         tokio::time::sleep(Duration::from_millis(50)).await;
-        for line in clock.lock().unwrap().marks.drain(..) {
+        let lines: Vec<String> = std::mem::take(&mut clock.lock().unwrap().marks);
+        for line in &lines {
             println!("{line}");
         }
+        steps.push(lines);
     }
     if let Some(first) = continue_first {
         println!(
             "continue after a stop: first text {:.2} s",
             first.as_secs_f64()
         );
+    }
+    // The continue went to the slot that holds the conversation, and read
+    // only what was new.
+    if let (Some(conversation), Some(continued)) = (
+        steps.first().and_then(|l| timings(l).first().copied()),
+        steps.get(2).and_then(|l| timings(l).last().copied()),
+    ) {
+        println!(
+            "continue: slot {} ({} prompt tokens); the conversation's slot is {}",
+            continued.0, continued.1, conversation.0
+        );
+        assert_eq!(
+            continued.0, conversation.0,
+            "the continue took the other slot"
+        );
+        assert!(
+            continued.1 < 64,
+            "the continue read {} prompt tokens",
+            continued.1
+        );
+    } else {
+        panic!("no model server timings for prompt 1 or the continue: {steps:?}");
     }
 
     // A second prompt sent at once never waits behind the title: it reaches

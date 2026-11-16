@@ -15,6 +15,7 @@ mod disk;
 mod downloads;
 pub mod fetch;
 mod service;
+pub mod slots;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -72,6 +73,8 @@ pub struct Gateway {
     /// Counts the person's stops, so a reply being written drops its
     /// request at once rather than at its next token.
     stops: tokio::sync::watch::Sender<u64>,
+    /// When the person last stopped a reply.
+    last_stop: Mutex<Option<std::time::Instant>>,
     /// The llama.cpp server program; `None` when the bundle has none.
     server: Option<PathBuf>,
     gate: Arc<dyn capsule_core::RamGate>,
@@ -134,6 +137,7 @@ impl Gateway {
             on_worker: Box::new(|_, _| {}),
             foreground: tokio::sync::watch::Sender::new(0),
             stops: tokio::sync::watch::Sender::new(0),
+            last_stop: Mutex::new(None),
             server,
             gate,
             configure: Box::new(|_| {}),
@@ -188,7 +192,25 @@ impl Gateway {
 
     /// The person stopped a reply.
     pub fn reply_stopped(&self) {
+        *self.last_stop.lock().unwrap_or_else(|p| p.into_inner()) = Some(std::time::Instant::now());
         self.stops.send_modify(|n| *n = n.wrapping_add(1));
+    }
+
+    /// Shortly after a stop, wait until the model server has ended the
+    /// stopped reply, so the next one gets the conversation's slot
+    /// ([`slots`]). `None` when no reply was stopped lately, or `model` has
+    /// no running worker.
+    pub async fn settle_after_stop(&self, model: &str) -> Option<slots::SlotWait> {
+        let stopped = *self.last_stop.lock().unwrap_or_else(|p| p.into_inner());
+        if stopped?.elapsed() > slots::AFTER_STOP {
+            return None;
+        }
+        let worker = {
+            let workers = self.workers.lock().unwrap_or_else(|p| p.into_inner());
+            workers.get(model).cloned()
+        }?;
+        let endpoint = worker.supervisor().endpoint().await?;
+        Some(slots::wait_idle(&endpoint, slots::LIMIT).await)
     }
 
     /// Changes each time the person stops a reply.
