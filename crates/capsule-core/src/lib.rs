@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Shared vocabulary of the Isonomic Capsule engine. No process, socket or
 //! database code lives here: only the types every other crate agrees on.
 

@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Problem reports from the engine, in format 1.
 //!
 //! A report is one small JSON document written to the Capsule's

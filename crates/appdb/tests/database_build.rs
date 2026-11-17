@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! A Capsule's database made by the earlier bundled build opens unchanged
 //! under the one built from source. Not part of the hermetic suite: it
 //! needs both builds' binaries and must not run as root.

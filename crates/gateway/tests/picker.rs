@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! What the model picker needs from the gateway: which model is the
 //! recommended one, and the check a session's chosen model must pass.
 

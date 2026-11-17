@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The engine's own log, whose last lines a panic report carries. It lives
 //! in `capsule_core::log` so that every engine crate (the agents host and
 //! the gateway included) writes into the same ring.

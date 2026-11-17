@@ -19,6 +19,7 @@ members = [
 version = "0.9.0"
 edition = "2021"
 publish = false
+license = "AGPL-3.0-or-later"
 
 [workspace.dependencies]
 capsule-core = { path = "crates/capsule-core" }

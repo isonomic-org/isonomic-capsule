@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Model downloads (isonomic-sdk #26): the engine owns each one, so any
 //! window can follow it, leave, and attach again.
 //!

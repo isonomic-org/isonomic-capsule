@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Model downloads and the first-model recommendation, over a real socket.
 //! The model file comes from a loopback HTTP server in the test, which can
 //! hold the transfer halfway; nothing leaves the machine.

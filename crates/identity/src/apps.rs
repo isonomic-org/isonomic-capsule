@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Apps get an Isonomic ID and a grant (R7, step 3).
 //!
 //! On `apps.grant`, an app gets:

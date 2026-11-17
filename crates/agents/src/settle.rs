@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! A reply after a stop lands on the slot that holds the conversation.
 //!
 //! The chat worker runs two slots. When the person stops a reply, the

@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Timed Chat turns against a running engine. Not part of the hermetic
 //! suite: it needs an engine with a model installed.
 //!

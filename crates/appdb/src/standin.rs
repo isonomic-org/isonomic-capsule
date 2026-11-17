@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! A database that runs no SQL, for hermetic tests of the layers above:
 //! reads answer what a test scripted (no rows otherwise), writes change
 //! nothing, and every statement is recorded with who ran it and where.

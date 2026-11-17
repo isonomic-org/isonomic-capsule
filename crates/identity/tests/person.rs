@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The person's ID: made once, then the same one, from what the Capsule
 //! and the key store keep. Hermetic: the identity library's in-memory key
 //! store and in-memory secrets stand in for the Mac's.

@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The cache and queue service as a supervised service (architecture spec,
 //! sections 4.2, 4.5).
 //!

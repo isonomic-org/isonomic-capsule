@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Startup tiers and lifecycle states, shared by the registry, the supervisor
 //! and the broker.
 

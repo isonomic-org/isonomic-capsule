@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! How much memory a new process can have now, as the system itself counts
 //! it, and whether the system is under memory pressure.
 //!

@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 use std::sync::atomic::{AtomicI64, Ordering};
 
 use broker::TokenKey;

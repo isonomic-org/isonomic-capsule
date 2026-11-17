@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The `models` methods over the gateway, and a stream's chunks on the
 //! wire: text and reasoning as they come, then exactly one chunk with
 //! `stop`, whether the model ended, failed or was cancelled.

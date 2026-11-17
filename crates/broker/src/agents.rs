@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The seam to the agents host: the broker checks the token and the
 //! capability, then hands every `agents` call here. The host itself lives
 //! in the `agents` crate, which depends on this one, so the broker only

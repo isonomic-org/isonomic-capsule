@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Build tasks. `cargo xtask fetch-sidecars` downloads the pinned services
 //! into `sidecars/`, verifying each against `sidecars.json`.
 //!

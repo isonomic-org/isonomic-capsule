@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The `system` interface over a real Unix socket. The first tests use a fake
 //! engine; the last drives the real supervisor with a stand-in service and is
 //! the engine half of the Milestone 0 gate.

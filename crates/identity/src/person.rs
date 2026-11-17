@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The person's Isonomic ID: made the first time it is asked for, then
 //! read from the Capsule.
 //!

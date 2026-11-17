@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The harness host's `ScopeResolver` over the engine's approved apps, and
 //! the user-action tokens that let a person's decision through.
 //!

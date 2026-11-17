@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The engine as the engine binary assembles it, on a Capsule directory,
 //! with the inference testkit's fake model server in place of llama.cpp.
 #![allow(dead_code)]

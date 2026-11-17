@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The notice the app ships for the programs it redistributes.
 //!
 //! The database, the cache and the model server are bundled in the app

@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The download rules, with an archive built in memory and no network.
 
 use std::sync::atomic::{AtomicU32, Ordering};

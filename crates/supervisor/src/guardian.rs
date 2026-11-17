@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Nothing a service runs outlives the engine.
 //!
 //! A service runs in its own process group, so when the engine is killed

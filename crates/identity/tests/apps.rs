@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Apps get an ID and grants from the person on `apps.grant` (R7 step 3),
 //! checked with the identity library's own check function. Hermetic: the
 //! library's in-memory key store stands in for the Mac's.

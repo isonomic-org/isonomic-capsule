@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The `models` interface over a real socket: the gateway with a fake model
 //! server in place of llama.cpp and a stand-in worker program, under a
 //! scripted memory gate. Hermetic: no model, no download, no real server.

@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The harness host's `ModelClient` over the engine's model gateway, so an
 //! agent session's turns run on the same local models as `models.stream`.
 //!

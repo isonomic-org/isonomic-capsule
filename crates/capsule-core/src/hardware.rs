@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Hardware profiles (architecture spec, section 4.3).
 //!
 //! One profile, chosen from physical memory, is the single source of every

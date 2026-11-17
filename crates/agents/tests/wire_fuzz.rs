@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The engine's socket under hostile input: random bytes, frames that lie
 //! about their length, oversized frames, frames cut short and held open,
 //! deeply nested JSON, and every client request in the SDK's frozen fixtures

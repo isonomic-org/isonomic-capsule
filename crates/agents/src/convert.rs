@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The host's types to the SDK's wire types and back, and host errors to
 //! wire errors. Ids and events are harness-core's on both sides; only the
 //! call arguments and results differ.

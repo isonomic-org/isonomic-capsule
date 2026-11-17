@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Log capture for supervised services: an in-memory ring of the last 50 lines
 //! (what the window shows for a failing service) plus an optional
 //! size-rotated log file.

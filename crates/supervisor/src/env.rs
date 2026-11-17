@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The environment handed to a supervised child, built from an allow-list.
 //!
 //! The engine clears its own environment at spawn and sets only what is

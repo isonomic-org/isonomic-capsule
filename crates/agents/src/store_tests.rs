@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The SQLite store behaves exactly like the harness's own in-memory store,
 //! and keeps what it was given across a reopen.
 

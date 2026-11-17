@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The engine dies mid-turn and is started again on the same Capsule: the
 //! interrupted turn is sealed, the session takes the next message, and the
 //! socket binds again. The first engine runs on its own runtime, dropped

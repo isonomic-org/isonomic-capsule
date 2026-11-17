@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The RAM gate (architecture spec, section 4.3), carried over from the
 //! earlier build and changed, with the orchestrator's go-ahead, after a 16 GB
 //! Intel Mac in ordinary use was refused models it could run.

@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Apps' databases (SDK request R5): the engine side of the `sql`
 //! interface, below the capability check.
 //!

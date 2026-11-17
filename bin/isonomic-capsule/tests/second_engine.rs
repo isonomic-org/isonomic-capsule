@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! A second engine for the same Capsule exits cleanly, so a login agent that
 //! starts one while another is serving doesn't restart it in a loop.
 

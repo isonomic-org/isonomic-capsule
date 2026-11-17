@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Writing a report into the Capsule's `reports/pending/`, beside the
 //! window's and named as the window names its own
 //! (`<unix millis, 16 digits>-<kind>.json`), so the window lists, shows and

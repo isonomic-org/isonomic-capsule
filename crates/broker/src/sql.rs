@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The `sql` interface (SDK request R5) above the apps' database: which
 //! schema a call runs in, live queries, and the frame limit.
 //!

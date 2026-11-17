@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Each app's role, schemas and read access, set up from its manifest.
 //!
 //! An app's role logs in (over the user-only socket, as every role does)

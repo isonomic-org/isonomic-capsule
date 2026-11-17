@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Tests for `stack.rs`: parallel start of a tier, the aggregate status
 //! light, shutdown in reverse dependency order, lazy starts and the RAM gate.
 //! Services are shell stand-ins behind a fake protocol server.

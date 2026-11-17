@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Broker: the engine's socket server (architecture spec, section 4.6).
 //!
 //! It serves the `system` interface (status of every service, a

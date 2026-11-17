@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! A Capsule left by an earlier build opens in this one (`docs/capsule-format.md`).
 //!
 //! `fixtures/capsule-format-1/` is format 1 as the first builds wrote it,

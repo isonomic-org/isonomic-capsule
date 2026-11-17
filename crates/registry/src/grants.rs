@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Approved apps: each app's current manifest, and every token issued for
 //! it. The registry never holds a token itself, only a digest of it, so a
 //! copy of the database grants nothing.

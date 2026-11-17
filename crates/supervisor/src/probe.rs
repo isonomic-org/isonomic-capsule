@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Readiness probes (architecture spec, section 4.2): two-phase per service.
 //! Connect (liveness), then speak the service's real protocol (readiness).
 //! No probe shells out to a client tool, so nothing in the user's environment

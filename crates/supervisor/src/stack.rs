@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Startup stack (architecture spec, section 4.2): tier 0 first, tier 1 in
 //! parallel once tier 0 is healthy. Records cold-start time, aggregates state
 //! for the status light, and stops everything in reverse dependency order.

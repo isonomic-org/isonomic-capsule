@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! How a chat worker is launched: its slots, its context and, for the
 //! Qwen3.5 family, the chat template the conversation is rendered with.
 

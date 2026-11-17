@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! A damaged `registry.db` must not stop the engine. Before anything opens
 //! it, the engine runs SQLite's `quick_check`. A file that fails is moved,
 //! never deleted, into the Capsule's `unreadable/` folder with a timestamp

@@ -3,6 +3,7 @@ name = "agents"
 description = "Hosts harness sessions in the Isonomic Capsule engine: adapters over the harness host's traits"
 version.workspace = true
 edition.workspace = true
+license = "AGPL-3.0-or-later"
 publish.workspace = true
 
 [dependencies]

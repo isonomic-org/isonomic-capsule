@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! What can still be read from a registry that failed its check, copied
 //! into the new one before the engine starts, so a disk fault costs as
 //! little as possible: the chats first, then the list of stored files, then

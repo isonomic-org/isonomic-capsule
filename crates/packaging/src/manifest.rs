@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The pinned manifest (`sidecars.json`) and the rules it must satisfy.
 //!
 //! Three install shapes: `file` (one executable), `directory` (an executable

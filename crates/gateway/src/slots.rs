@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Whether the model server has finished a stopped reply.
 //!
 //! The chat worker runs two slots. When the person stops a reply, the

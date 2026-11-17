@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! A registry damaged in different places gives back what it still can:
 //! the header (nothing), one page of the chats table (all but that page's
 //! chats), one page of one chat's history (that chat, marked as missing

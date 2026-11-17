@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! A person's prompt never waits behind a chat's title. A title request
 //! waits for a quiet period after its turn, and a turn that begins
 //! meanwhile, or while the title is being written, ends it at once with
