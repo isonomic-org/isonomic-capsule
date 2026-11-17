@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! After a stop, the next reply waits on the model server's own slot list
 //! until no slot is working, then goes; it never waits past the limit.
 //! A local stand-in answers `GET /slots`, checking the launch's key.

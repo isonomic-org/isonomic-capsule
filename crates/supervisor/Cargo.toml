@@ -3,6 +3,7 @@ name = "supervisor"
 description = "Service supervisor for the Isonomic Capsule engine: spawn, probe, restart, startup stack"
 version.workspace = true
 edition.workspace = true
+license = "AGPL-3.0-or-later"
 publish.workspace = true
 
 [dependencies]

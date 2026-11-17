@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Engine configuration. Everything comes from explicit inputs: the engine
 //! never guesses a path from its working directory.
 

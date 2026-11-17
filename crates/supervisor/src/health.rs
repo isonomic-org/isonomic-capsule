@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Two-phase health probe: TCP connect (liveness) then HTTP GET (readiness).
 //! Works over TCP or a Unix socket.
 

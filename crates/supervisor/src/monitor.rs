@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The two background tasks behind a running service: the crash monitor
 //! (restart on the backoff schedule, trip the breaker) and the steady-state
 //! probe (a hung service looks alive, so two failed probes kill it).

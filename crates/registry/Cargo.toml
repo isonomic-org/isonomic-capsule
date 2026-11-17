@@ -3,6 +3,7 @@ name = "registry"
 description = "Embedded state store for the Isonomic Capsule engine: desired and observed service state"
 version.workspace = true
 edition.workspace = true
+license = "AGPL-3.0-or-later"
 publish.workspace = true
 
 [dependencies]

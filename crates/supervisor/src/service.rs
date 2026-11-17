@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Generic service supervision: spawn a binary in its own process group with
 //! an allow-listed environment, two-phase readiness probing, crash recovery on
 //! the backoff schedule with the circuit breaker, registry bookkeeping, and

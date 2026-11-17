@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The seam to the model gateway: the broker checks the token and the
 //! capability, then hands every `models` call here. The gateway lives in
 //! its own crate, which depends on this one.

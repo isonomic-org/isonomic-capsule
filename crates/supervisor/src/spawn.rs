@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Process plumbing for one service: allocate where it listens, render its
 //! arguments and config files, spawn it in its own process group with an
 //! allow-listed environment, pump its output into the log sink, and signal or

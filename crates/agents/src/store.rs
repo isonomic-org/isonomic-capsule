@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The harness host's `SessionStore` on SQLite: one row per event, appended
 //! in one transaction, and one registry row per session.
 //!

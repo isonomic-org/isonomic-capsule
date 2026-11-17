@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Bytes from the system's random source, for secrets and opaque handles.
 
 use std::io::Read;

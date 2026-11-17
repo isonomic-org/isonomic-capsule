@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The file and build shapes, end to end through `install_one`, with
 //! archives built in memory and a stand-in build command.
 

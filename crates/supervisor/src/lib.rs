@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Isonomic Capsule service supervisor.
 //!
 //! Spec: architecture section 4.2. Carried over from the earlier build with

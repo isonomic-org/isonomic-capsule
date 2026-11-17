@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! What a report says about the machine: the macOS version, read from the
 //! system's own version file, and memory in whole gigabytes.
 

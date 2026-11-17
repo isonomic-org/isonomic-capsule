@@ -3,6 +3,7 @@ name = "isonomic-capsule"
 description = "The Isonomic engine"
 version.workspace = true
 edition.workspace = true
+license = "AGPL-3.0-or-later"
 publish.workspace = true
 
 [dependencies]

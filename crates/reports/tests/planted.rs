@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Planted content never reaches a report: a prompt, a statement's value, a
 //! home path and a token, printed by stand-in services that then fail the
 //! way real ones do, through the real supervisors. Hermetic: stand-in

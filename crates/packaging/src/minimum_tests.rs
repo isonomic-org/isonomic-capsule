@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The product's minimum macOS, through `install_one`: a tree built from
 //! source by one target's own build, and the refusal of anything in it that
 //! says it needs a newer macOS. Archives are built in memory and the build

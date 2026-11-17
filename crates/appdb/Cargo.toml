@@ -3,6 +3,7 @@ name = "appdb"
 description = "Apps' databases in the Isonomic Capsule: schemas and roles per app, statements run as the app's own role"
 version.workspace = true
 edition.workspace = true
+license = "AGPL-3.0-or-later"
 publish.workspace = true
 
 [dependencies]

@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Download, verify and install one pinned artifact.
 //!
 //! The order is fixed: nothing is unpacked before its SHA-256 matches the

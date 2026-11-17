@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The panic hook: before the engine's process ends, it writes a report
 //! with the engine's last log lines. A panic in a task the runtime catches
 //! is reported too: it is still a fault in the engine.

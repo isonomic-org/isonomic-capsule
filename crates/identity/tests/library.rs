@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The identity library's own checks, `identities.rs` and `vectors.rs`,
 //! compiled here with this repo's lockfile, so the engine's build of the
 //! library is held to the same answers as the library's own. They are

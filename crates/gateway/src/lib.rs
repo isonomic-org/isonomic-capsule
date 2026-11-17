@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The model gateway (SDK request R2): the `models` interface on local
 //! models, through isonomic-inference.
 //!

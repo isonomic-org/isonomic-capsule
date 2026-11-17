@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Where a supervised service listens: a loopback TCP address or a Unix
 //! socket inside the Capsule directory.
 

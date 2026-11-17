@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The `agents` interface served by the harness host: each method maps one
 //! to one onto a host call. The broker has checked the token and the
 //! capability; the host decides what each caller reaches.

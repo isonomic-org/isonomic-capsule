@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! How identity records are kept in the Capsule: a key log is one file,
 //! one entry per line, each the signed envelope's bytes in hexadecimal
 //! exactly as the identity library made them. A file is written whole and

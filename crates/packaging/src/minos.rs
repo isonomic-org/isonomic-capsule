@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The oldest macOS each Mach-O file says it runs on, so nothing that needs
 //! a newer macOS than the product's minimum is ever bundled.
 //!

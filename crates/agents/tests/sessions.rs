@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The `agents` interface end to end: a real broker socket, the SDK client,
 //! the harness host over the engine's SQLite log and token resolver, and a
 //! scripted model in place of the gateway.

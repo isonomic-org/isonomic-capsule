@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Where the recovery seed waits for the recovery kit: a small secret,
 //! labelled for its Capsule, that never leaves the key store except
 //! to be shown to the person once the kit exists.

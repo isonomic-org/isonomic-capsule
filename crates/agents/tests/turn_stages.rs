@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Where a chat turn's time goes, on a real model, through the engine's own
 //! path: the broker, the check on every app call, the agents host, the
 //! gateway and the model server, with the engine's chat-worker settings.

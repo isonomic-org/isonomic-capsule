@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The directory of accepted logs, kept across restarts: new and longer
 //! logs are kept, older copies change nothing, forks are refused and kept
 //! for the person, and a stored log that no longer verifies is set aside.

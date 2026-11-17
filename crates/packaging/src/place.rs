@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Putting one verified download in place, by install shape.
 //!
 //! - `directory`: unpack, keep the tree under `pathInArchive`, trim `bin/`.

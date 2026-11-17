@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Every key log the engine has accepted (R7, step 2): the person's own,
 //! and each app's and agent's, kept across restarts.
 //!

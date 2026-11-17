@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! One Chat turn served end to end by the engine's own parts: the broker,
 //! the agents host on the SQLite log, and the model gateway, with a fake
 //! model server in place of llama.cpp and a stand-in worker program.

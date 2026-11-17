@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! A Capsule the engine refuses gets no problem report and no engine log:
 //! the engine stops before it sets either up.
 

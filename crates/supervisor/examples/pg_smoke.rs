@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Manual smoke test against a real PostgreSQL. Not part of the hermetic
 //! suite; it needs the server binaries and must not run as root.
 //!

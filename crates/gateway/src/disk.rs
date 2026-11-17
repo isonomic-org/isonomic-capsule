@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Room on disk for a model download, checked before it starts so a first
 //! download does not fill the disk and fail near the end.
 

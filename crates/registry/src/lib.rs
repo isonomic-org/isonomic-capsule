@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Embedded state store (architecture spec, section 4.4): what the engine
 //! observed about each service. Allocated port or socket, lifecycle state,
 //! restart count and last-healthy time, in SQLite inside the engine process.

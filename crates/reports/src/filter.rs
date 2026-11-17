@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Which of the shared log rules (`isonomic_reports::filter`) each of the
 //! engine's services follows, and the model server's allowed prefixes:
 //!

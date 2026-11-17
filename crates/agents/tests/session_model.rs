@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! A session created with a model a person picked: checked with the
 //! stream rule, then run on that model; a name that slips through fails
 //! its turn with a reason. The gateway runs against a fake model server.

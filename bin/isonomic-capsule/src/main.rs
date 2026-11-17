@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The Isonomic engine. Starts tier 0 (registry, broker) and tier 1
 //! (PostgreSQL and the cache and queue service), logs where each bundled binary resolved and how long the
 //! cold start took, then serves the `system` interface until asked to stop,

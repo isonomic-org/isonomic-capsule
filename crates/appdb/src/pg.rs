@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The apps' database on the Capsule's own server, over its Unix socket.
 //!
 //! One database holds every app's schemas. Each statement runs in a

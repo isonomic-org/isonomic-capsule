@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! What the check function sees (R7, step 4): keys from the directory of
 //! logs, revocations from `identity/revoked`, resources from `registry.db`.
 //! Its version moves whenever the directory or the revocations change, so

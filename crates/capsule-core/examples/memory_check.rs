@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! What the RAM gate sees on this machine now, and what it would answer for
 //! the two small chat models. Not part of the test suite.
 //!
