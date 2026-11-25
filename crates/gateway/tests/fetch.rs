@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! A model file's fetch through what a first download meets: a quit, a
 //! dropped connection, a silent one, a server that ignores ranges, a
 //! corrupt leftover. The file comes from a loopback server in the test;

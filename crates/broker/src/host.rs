@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The real `System`: the supervisor's stack, the registry and the hardware
 //! profile, presented in wire types.
 

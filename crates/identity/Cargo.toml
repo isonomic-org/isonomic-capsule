@@ -3,6 +3,7 @@ name = "identity"
 description = "The person's Isonomic ID and apps' grants: made from the computer's key store, kept in the Capsule"
 version.workspace = true
 edition.workspace = true
+license = "AGPL-3.0-or-later"
 publish.workspace = true
 
 [dependencies]

@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The person's Isonomic ID (isonomic-sdk request R7, step 1), served to the
 //! window as `identity.get`.
 //!

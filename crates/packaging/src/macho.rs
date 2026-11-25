@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Which architectures a Mach-O file contains, read from its first bytes.
 //!
 //! A binary built for the wrong Mac is invisible until a user launches it, so

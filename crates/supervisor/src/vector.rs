@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The vector database as a supervised service on the lazy tier (architecture
 //! spec, sections 4.2, 4.5).
 //!

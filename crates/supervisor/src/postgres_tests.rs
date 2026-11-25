@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Tests for `postgres.rs`. `initdb` is a shell stand-in and the server is a
 //! fake speaking the wire protocol on a Unix socket: no real PostgreSQL.
 

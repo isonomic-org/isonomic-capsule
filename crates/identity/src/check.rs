@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Every data call an app makes goes through the check function (R7,
 //! step 4), after the manifest's own checks (`proto::auth`).
 //!

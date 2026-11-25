@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The `sql` interface over a real socket, above a stand-in database:
 //! schema choice, live queries and who may end them. The database's own
 //! guard is tested against a real server in `appdb`'s `real_database`.

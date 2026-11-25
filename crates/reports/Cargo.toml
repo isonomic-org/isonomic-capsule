@@ -3,6 +3,7 @@ name = "reports"
 description = "Problem reports from the Isonomic engine, in the window's format 1"
 version.workspace = true
 edition.workspace = true
+license = "AGPL-3.0-or-later"
 publish.workspace = true
 
 [dependencies]

@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Fetching a model file so that a person's first download survives what a
 //! laptop does to it: being quit, put to sleep, or losing its connection.
 //!

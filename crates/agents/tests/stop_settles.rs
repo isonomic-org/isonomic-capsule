@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! A stopped reply lets go of its slot before the next reply is sent: the
 //! stop drops its request at once (not at its next token), and the next
 //! reply waits about one token gap for the model server to free the slot

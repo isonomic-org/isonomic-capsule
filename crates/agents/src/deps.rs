@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The engine's side of the harness host's remaining traits: time, the
 //! person's locale, background work, and the parts V1 Chat does not use yet
 //! (client tools, attachments), plus a model client for when no model is

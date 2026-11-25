@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Which models exist and which are installed: the model library's
 //! manifest, and the files in the Capsule's model directory.
 

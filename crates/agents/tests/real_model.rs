@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Chat turns on a real model, run by the engine's gateway and agents host.
 //! Not part of the hermetic suite: it needs a llama.cpp server and a model.
 //!

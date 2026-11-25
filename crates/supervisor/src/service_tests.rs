@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Tests for `service.rs`, included from it via `#[path]` so they reach the
 //! engine's private items. Stand-in binaries are shell scripts; the protocol
 //! server is a fake. Nothing here needs a real service.

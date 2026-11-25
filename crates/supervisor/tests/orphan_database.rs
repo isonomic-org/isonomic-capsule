@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! A real database left running by an engine killed outright. Not part of
 //! the hermetic suite: it needs the server binaries and a user other than
 //! root, as the database refuses to run as root.

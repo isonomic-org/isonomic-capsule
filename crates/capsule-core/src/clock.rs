@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Injectable time. Engine code that stamps time takes a `Clock`, so no test
 //! depends on the wall clock.
 

@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Wire values to and from the database's binary format.
 //!
 //! A parameter takes the type the database inferred for its placeholder;

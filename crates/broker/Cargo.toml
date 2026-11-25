@@ -3,6 +3,7 @@ name = "broker"
 description = "Socket server of the Isonomic Capsule engine: the system interface over one Unix socket"
 version.workspace = true
 edition.workspace = true
+license = "AGPL-3.0-or-later"
 publish.workspace = true
 
 [dependencies]

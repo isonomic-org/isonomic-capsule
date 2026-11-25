@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Every app data call goes through the check (R7 step 4), at the service
 //! the broker asks. Hermetic: the identity library's in-memory key store.
 //!

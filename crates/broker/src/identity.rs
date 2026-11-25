@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The seam to the person's Isonomic ID: the broker checks that the caller
 //! is the shell (`proto::auth`), then asks here. The ID itself is made and
 //! kept by the `identity` crate, which depends on this one.

@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Watching what the engine runs, from outside its supervisors: their state
 //! is published on a watch, so nothing here changes how they behave.
 //!

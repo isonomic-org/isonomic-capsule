@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Finding bundled binaries at run time. The engine takes the bundle
 //! directory as a plain input and never looks on the user's `PATH`: software
 //! the user happens to have installed is never reused.

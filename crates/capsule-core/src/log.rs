@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The engine's own log. Every crate in the engine writes through [`line`].
 //!
 //! - Once [`install`]ed (when the Capsule has been accepted), lines go to

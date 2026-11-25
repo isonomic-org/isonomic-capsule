@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Problem reports: the engine's panic hook, and watches on the bundled
 //! services and the model workers. Written to `reports/pending/` in the
 //! Capsule in the window's format 1, for the window to show; nothing is

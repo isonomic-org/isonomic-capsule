@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Approved apps and their capability tokens (SDK request R1).
 //!
 //! A token is a keyed hash of the app id and its approved capabilities,

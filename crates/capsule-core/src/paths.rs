@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The Capsule directory layout (architecture spec, section 7). Everything the
 //! engine owns sits under one root. Sockets live in a `run` directory whose
 //! path is short enough for the OS limit on socket paths.

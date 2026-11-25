@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! One client connection: version negotiation, then requests in, responses
 //! and events out. A single writer task owns the socket's write half, so
 //! frames never interleave.

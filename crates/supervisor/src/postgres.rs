@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! PostgreSQL as a supervised service (architecture spec, sections 4.2, 4.5).
 //!
 //! - First-time setup: `initdb` runs once, into a staging directory that is

@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! What every report from this engine shares: where it goes, the build and
 //! machine it names, and the home folder it is scrubbed against.
 //!

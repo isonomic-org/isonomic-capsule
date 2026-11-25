@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The SDK's conformance checks against a test engine in a temporary
 //! Capsule directory: the real broker, a real registry, token key and blob
 //! store on disk, and the agents host over the engine's session log with a

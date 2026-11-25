@@ -3,6 +3,7 @@ name = "capsule-core"
 description = "Shared types for the Isonomic Capsule engine: states, paths, config, clock and hardware traits"
 version.workspace = true
 edition.workspace = true
+license = "AGPL-3.0-or-later"
 publish.workspace = true
 
 [dependencies]

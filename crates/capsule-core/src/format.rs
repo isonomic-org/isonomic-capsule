@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! What a Capsule's data is, so a later build opens what an earlier one
 //! left (see `docs/capsule-format.md`).
 //!

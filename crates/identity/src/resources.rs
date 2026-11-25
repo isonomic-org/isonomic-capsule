@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! What the check function protects (R7 steps 3 and 4): one record per
 //! thing the person owns, in `registry.db`.
 //!
