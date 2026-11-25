@@ -13,6 +13,10 @@ Newest first. This file is the engine's status from now on. The history of each 
 - [Problem reports](status/reports.md): the engine's own reports, the log ring, the shared crate.
 - [Later modules](status/engine-later.md): reserved crates.
 
+## 2026-11-25 · SDK_REF at the SDK's recovery kit merge
+
+- **`SDK_REF`** moves from the recovery kit pull request's head (`1b7f2a5`) to its merge commit on the SDK's main (`ca0e4d8`). The SDK code is the same; only its CI files changed.
+
 ## 2026-11-25 · Identity: the recovery kit on the wire
 
 - **The four calls** the SDK added (`identity.kit_export`, `kit_restore`, `kit_saved`, `kit_status`) are answered by the broker, for the shell only. `broker::Identity` has them, refused by default; `IdentityService` does the work off the runtime (`identity::kit_calls`).
