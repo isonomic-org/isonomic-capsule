@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The recovery kit: what lets a person who loses their Mac have the same
 //! Isonomic ID on a new one. Local only: the kit is a document the window
 //! saves as a file, and words the person writes down; nothing goes to a
@@ -328,6 +331,8 @@ pub enum RecoveryError {
     NotAsked,
     #[error("There is no Isonomic ID on this Mac yet.")]
     NoId,
+    #[error("There is no recovery kit to confirm yet: show the recovery kit first.")]
+    NotExported,
     #[error(transparent)]
     Kit(#[from] KitError),
     #[error(transparent)]
@@ -427,6 +432,9 @@ impl crate::IdentityService {
     pub fn kit_saved(&self) -> Result<(), RecoveryError> {
         let person = &self.0.person;
         let mut kept = status(person.root());
+        if kept.exported_at.is_none() {
+            return Err(RecoveryError::NotExported);
+        }
         kept.saved_at = Some(person.now());
         set_status(person.root(), kept).map_err(|e| RecoveryError::Save(e.to_string()))
     }

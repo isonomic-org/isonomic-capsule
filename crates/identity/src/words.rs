@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The recovery seed as words a person can write down.
 //!
 //! The standard 24-word encoding of 32 bytes: the 256 seed bits and the

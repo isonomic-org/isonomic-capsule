@@ -13,6 +13,14 @@ Newest first. This file is the engine's status from now on. The history of each 
 - [Problem reports](status/reports.md): the engine's own reports, the log ring, the shared crate.
 - [Later modules](status/engine-later.md): reserved crates.
 
+## 2026-11-25 · Identity: the recovery kit on the wire
+
+- **The four calls** the SDK added (`identity.kit_export`, `kit_restore`, `kit_saved`, `kit_status`) are answered by the broker, for the shell only. `broker::Identity` has them, refused by default; `IdentityService` does the work off the runtime (`identity::kit_calls`).
+- **Errors:** every refusal is `recovery_refused`, with the identity crate's fixed sentences. A word is named by its position, never by what was typed, and the kit is never quoted. A key store or disk failure is `identity_unavailable`. Nothing in the broker logs a call or a reply.
+- **`kit_saved` before any export** is refused, as the interface says.
+- **Through the whole engine** (`agents/tests/recovery_kit.rs`): export on one Capsule, a fresh Capsule with its own key store, wrong words, a mistyped word and a planted file refused, restore to the same ID with a new kit, and a new app approval working with grants from the restored ID.
+- **`SDK_REF`** points at the head of the SDK's recovery kit pull request (`1b7f2a5`) until it merges; it moves to the merge commit then. `UI_REF` follows that SDK commit's.
+
 ## 2026-11-17 · Identity: the recovery kit, engine side (no wire calls yet)
 
 - **The kit document** (`identity::kit`, format `isonomic-recovery-kit`, version 1) is JSON holding:

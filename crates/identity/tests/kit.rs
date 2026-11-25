@@ -1,3 +1,6 @@
+// Copyright 2026 Anud Inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The recovery kit, end to end at the service the broker asks: export on
 //! one Mac, restore on another (a fresh Capsule and a fresh key store), the
 //! same ID, a new app approval that works, and the old keys retired. Every

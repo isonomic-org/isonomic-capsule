@@ -14,6 +14,7 @@ pub mod check;
 pub mod directory;
 mod files;
 pub mod kit;
+mod kit_calls;
 mod person;
 pub mod recovery;
 pub mod resources;
@@ -277,6 +278,34 @@ fn unavailable(e: impl std::fmt::Display) -> WireError {
 }
 
 impl broker::Identity for IdentityService {
+    fn kit_export(
+        &self,
+        person_asked: bool,
+    ) -> BoxFuture<'_, Result<isonomic_proto::identity::RecoveryKit, WireError>> {
+        Box::pin(kit_calls::export(self.clone(), person_asked))
+    }
+
+    fn kit_restore(
+        &self,
+        restore: isonomic_proto::identity::KitRestore,
+    ) -> BoxFuture<'_, Result<isonomic_proto::identity::KitRestored, WireError>> {
+        Box::pin(kit_calls::restore(self.clone(), restore))
+    }
+
+    fn kit_saved(&self) -> BoxFuture<'_, Result<(), WireError>> {
+        Box::pin(kit_calls::saved(self.clone()))
+    }
+
+    fn kit_status(&self) -> BoxFuture<'_, Result<isonomic_proto::identity::KitStatus, WireError>> {
+        let status = IdentityService::kit_status(self);
+        Box::pin(async move {
+            Ok(isonomic_proto::identity::KitStatus {
+                saved_at: status.saved_at,
+                exported_at: status.exported_at,
+            })
+        })
+    }
+
     fn get(&self) -> BoxFuture<'_, Result<Identity, WireError>> {
         let inner = Arc::clone(&self.0);
         Box::pin(async move {
