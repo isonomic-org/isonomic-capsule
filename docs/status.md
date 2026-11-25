@@ -19,6 +19,7 @@ Newest first. This file is the engine's status from now on. The history of each 
 - **Errors:** every refusal is `recovery_refused`, with the identity crate's fixed sentences. A word is named by its position, never by what was typed, and the kit is never quoted. A key store or disk failure is `identity_unavailable`. Nothing in the broker logs a call or a reply.
 - **`kit_saved` before any export** is refused, as the interface says.
 - **Through the whole engine** (`agents/tests/recovery_kit.rs`): export on one Capsule, a fresh Capsule with its own key store, wrong words, a mistyped word and a planted file refused, restore to the same ID with a new kit, and a new app approval working with grants from the restored ID.
+- **A title no longer misses a prompt sent right after its reply** (`agents::model`). The title began listening for the person's next turn only once it started, so a prompt sent between the reply's end and the title's start went unseen, and the title held it for the whole quiet period. The title now also yields at once when a turn began after the reply it names. Found by `title_yields` failing on CI; a delayed title start reproduces it.
 - **`SDK_REF`** points at the head of the SDK's recovery kit pull request (`1b7f2a5`) until it merges; it moves to the merge commit then. `UI_REF` follows that SDK commit's.
 
 ## 2026-11-17 · Identity: the recovery kit, engine side (no wire calls yet)
