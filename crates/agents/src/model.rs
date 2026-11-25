@@ -9,6 +9,7 @@
 //! `local:<id>`. The host runs as the engine, so the shell's access applies;
 //! an app reaches the host only through its own sessions.
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -31,6 +32,10 @@ pub struct GatewayModel {
     title_quiet: Option<Duration>,
     /// When the last reply was stopped, so the next one finds its slot.
     settle: Arc<crate::settle::Settle>,
+    /// The gateway's count of the person's turns when the last reply
+    /// began. A title that finds a later count yields at once: the person's
+    /// next turn began before the title even started waiting.
+    replied: Arc<AtomicU64>,
 }
 
 /// Whether `req` is the harness's title step. Its request carries no
@@ -53,6 +58,7 @@ impl GatewayModel {
             gateway,
             title_quiet: None,
             settle: Arc::default(),
+            replied: Arc::default(),
         }
     }
 
@@ -227,11 +233,22 @@ impl ModelClient for GatewayModel {
         };
         let model_id = model.clone();
         let request = request(model, &req);
-        let quiet = self.title_quiet.filter(|_| is_title(&req));
+        let titling = is_title(&req);
+        let quiet = self.title_quiet.filter(|_| titling);
+        let replied = Arc::clone(&self.replied);
         tokio::spawn(async move {
             // A title waits for quiet, and yields to the person's next turn.
             let mut person = gateway.foreground();
-            person.borrow_and_update();
+            let turns = *person.borrow_and_update();
+            if !titling {
+                replied.store(turns, Ordering::SeqCst);
+            } else if quiet.is_some() && turns != replied.load(Ordering::SeqCst) {
+                // The person's next prompt came between the reply and this
+                // title: `changed` below would never see it.
+                capsule_core::log::line("title: yielded before it was sent");
+                let _ = tx.send(Err(yielded())).await;
+                return;
+            }
             let mut stops = gateway.stops();
             stops.borrow_and_update();
             if let Some(quiet) = quiet {

@@ -176,8 +176,116 @@ impl Person {
         Ok((log.id().clone(), created))
     }
 
+    /// Which set of key store items is the person's: 1 for the ID as made
+    /// here, one more for each restore from a recovery kit (`identity/keys`).
+    fn generation(&self) -> u32 {
+        std::fs::read_to_string(self.keys_file())
+            .ok()
+            .and_then(|t| t.trim().strip_prefix("generation ")?.parse().ok())
+            .unwrap_or(1)
+    }
+
+    fn keys_file(&self) -> PathBuf {
+        self.root.join("identity").join("keys")
+    }
+
     fn label(&self, what: &str) -> String {
-        format!("capsule/{}/person/{what}", self.capsule_id)
+        self.label_at(self.generation(), what)
+    }
+
+    fn label_at(&self, generation: u32, what: &str) -> String {
+        match generation {
+            1 => format!("capsule/{}/person/{what}", self.capsule_id),
+            n => format!("capsule/{}/person/{n}/{what}", self.capsule_id),
+        }
+    }
+
+    /// The recovery seed the person's ID commits to, for the kit. Read from
+    /// the key store; never made here.
+    pub(crate) fn recovery_seed(&self) -> Result<[u8; SEED_BYTES], IdentityError> {
+        let backend = self.backend()?;
+        let kept = backend
+            .secrets
+            .get(&self.label("recovery-seed"))
+            .map_err(IdentityError::KeyStore)?
+            .ok_or_else(|| {
+                IdentityError::KeyStore("no recovery seed is kept for this ID".into())
+            })?;
+        kept.try_into()
+            .map_err(|_| IdentityError::KeyStore("the kept recovery seed is not 32 bytes".into()))
+    }
+
+    /// Adopt `kept` (a recovery kit's log, already checked against `seed`)
+    /// as this Capsule's person: new device keys and a new recovery seed in
+    /// this Mac's key store, and one entry signed by the kit's recovery key
+    /// that retires every old signing key and commits the new keys. The ID
+    /// does not change. The new seed is returned: the old kit is spent.
+    pub(crate) fn restore(
+        &self,
+        mut kept: Log,
+        seed: &[u8; SEED_BYTES],
+    ) -> Result<(Log, [u8; SEED_BYTES]), IdentityError> {
+        let mut known = self.known.lock().unwrap_or_else(|p| p.into_inner());
+        let backend = self.backend()?;
+        let generation = self.generation() + 1;
+        let label = |what: &str| self.label_at(generation, what);
+        // The new seed is kept before anything commits to it.
+        let fresh = new_seed().map_err(|_| IdentityError::KeyStore("no random bytes".into()))?;
+        backend
+            .secrets
+            .put(&label("recovery-seed"), &fresh)
+            .map_err(IdentityError::KeyStore)?;
+        let signing = key(&backend.keys, &label("device-signing"), KeyAlg::P256)?;
+        let rotation = key(&backend.keys, &label("device-rotation"), KeyAlg::P256)?;
+        let mut ops: Vec<Op> = kept
+            .state()
+            .keys
+            .keys()
+            .cloned()
+            .map(Op::RemoveKey)
+            .collect();
+        ops.push(Op::add(signing.public_key()));
+        let next = vec![
+            Commitment::device(&rotation.public_key()),
+            Commitment::recovery(&recovery_public_key(&fresh)),
+        ];
+        let at = self.now().max(kept.state().at);
+        kept.append(
+            ops,
+            next,
+            at,
+            &crate::recovery::RecoverySigner::new(seed),
+            &crate::directory::checks(),
+        )
+        .map_err(|e| IdentityError::KeyStore(format!("the recovery entry was refused: {e:?}")))?;
+        // The key labels first: a crash before the log is written leaves
+        // the next attempt a fresh generation.
+        crate::files::write_whole(
+            &self.keys_file(),
+            format!("generation {generation}\n").as_bytes(),
+        )
+        .map_err(|e| IdentityError::Save(e.to_string()))?;
+        self.write(&kept)?;
+        let _ = self.logs.accept(kept.entries());
+        *known = Some(kept.id().clone());
+        Ok((kept, fresh))
+    }
+
+    /// Move this Capsule's identity records aside, whole, into
+    /// `identity/replaced-<stamp>/`: never deleted.
+    pub(crate) fn set_aside(&self, stamp: &str) -> std::io::Result<PathBuf> {
+        let dir = self.root.join("identity");
+        let to = dir.join(format!("replaced-{stamp}"));
+        std::fs::create_dir_all(&to)?;
+        for entry in std::fs::read_dir(&dir)?.flatten() {
+            let name = entry.file_name();
+            if name.to_string_lossy().starts_with("replaced-") {
+                continue;
+            }
+            std::fs::rename(entry.path(), to.join(&name))?;
+        }
+        *self.known.lock().unwrap_or_else(|p| p.into_inner()) = None;
+        Ok(to)
     }
 
     fn make(&self) -> Result<Log, IdentityError> {
@@ -211,7 +319,7 @@ impl Person {
         Ok(seed)
     }
 
-    fn read(&self) -> Result<Option<Log>, IdentityError> {
+    pub(crate) fn read(&self) -> Result<Option<Log>, IdentityError> {
         let unreadable = |e: crate::files::FileError| IdentityError::Unreadable(e.to_string());
         let Some(entries) = crate::files::read_log(&self.file).map_err(unreadable)? else {
             return Ok(None);

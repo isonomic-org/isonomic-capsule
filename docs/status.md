@@ -13,66 +13,51 @@ Newest first. This file is the engine's status from now on. The history of each 
 - [Problem reports](status/reports.md): the engine's own reports, the log ring, the shared crate.
 - [Later modules](status/engine-later.md): reserved crates.
 
-## 2026-11-16 · Agents: after a stop, the next reply waits until the model server has ended the stopped one
+## 2026-11-25 · Identity: the recovery kit on the wire
 
-- **#79 did not hold on the Mac.** A continue straight after a stop still went to slot 1 and read 268 prompt tokens (2.97 s), so the cause was confirmed. No timed wait ran: the continue came later than #79's window, yet slot 0 was still busy.
-- **What the engine does now:** a reply sent within 3 s of a stop first asks the model server's own slot list (`GET /slots`, with the launch's key) until no slot is working. It asks every 20 ms, for at most 1 s (`gateway::slots`). The server then gives it the slot whose cache matches it best, which is the conversation's. The engine logs `reply: the model server's slots were free after N ms`.
-  - If a slot is still working at 1 s, the reply goes anyway, and the log says so.
-  - If the server gives no slot list, the engine waits about one token gap instead (#79's rule), and the log says why.
-- **The certain fix needs the inference repo.** That fix is to name the slot in the request (the server's `id_slot`), so a continue simply queues behind the stopped task on its own slot. But the provider builds the request body from `ChatRequest`, which is frozen and has no such field. It is a request to isonomic-inference, through the orchestrator.
-- **Checked:**
-  - against a local stand-in for the slot list: the reply waits until the stopped task has ended, it waits no longer than the limit, and a refused or missing slot list is said so, with the launch's key checked;
-  - the stop test still passes, on the fallback, since the fake model server has no slot list.
-- **The Mac check:** `turn_stages`'s stop-then-continue case now fails unless the continue lands on prompt 1's slot and evaluates fewer than 64 prompt tokens. It prints `continue: slot N (T prompt tokens); the conversation's slot is M`.
+- **The four calls** the SDK added (`identity.kit_export`, `kit_restore`, `kit_saved`, `kit_status`) are answered by the broker, for the shell only. `broker::Identity` has them, refused by default; `IdentityService` does the work off the runtime (`identity::kit_calls`).
+- **Errors:** every refusal is `recovery_refused`, with the identity crate's fixed sentences. A word is named by its position, never by what was typed, and the kit is never quoted. A key store or disk failure is `identity_unavailable`. Nothing in the broker logs a call or a reply.
+- **`kit_saved` before any export** is refused, as the interface says.
+- **Through the whole engine** (`agents/tests/recovery_kit.rs`): export on one Capsule, a fresh Capsule with its own key store, wrong words, a mistyped word and a planted file refused, restore to the same ID with a new kit, and a new app approval working with grants from the restored ID.
+- **A title no longer misses a prompt sent right after its reply** (`agents::model`). The title began listening for the person's next turn only once it started, so a prompt sent between the reply's end and the title's start went unseen, and the title held it for the whole quiet period. The title now also yields at once when a turn began after the reply it names. Found by `title_yields` failing on CI; a delayed title start reproduces it.
+- **`SDK_REF`** points at the head of the SDK's recovery kit pull request (`1b7f2a5`) until it merges; it moves to the merge commit then. `UI_REF` follows that SDK commit's.
 
-## 2026-11-16 · Agents: a continue after a stop lands on the conversation's slot
+## 2026-11-17 · Identity: the recovery kit, engine side (no wire calls yet)
 
-- **What the Mac measured:** a continue straight after a stop reached first text in about 5 s in three of five runs, and in 0.2 s in the other two.
-- **The likely cause:** the chat worker has two slots. A stopped reply's request was dropped only when its next token came, and the model server frees the slot only when it next tries to send that reply a token. A continue sent before then found the conversation's slot busy, went to the other slot, which holds no cache of the conversation, and read the whole prompt again.
-- **What the engine does now:**
-  - **The stop drops the reply's request at once.** `sessions.cancel` raises `Gateway::reply_stopped`. A reply being written wakes on it, checks its own stop flag, and lets go.
-  - **The next reply waits for the slot** (`agents::settle`). The engine remembers when a reply was stopped and how far apart its last tokens came. The next reply, a continue or a new prompt, waits until about one token gap plus 50 ms has passed since the stop, at most 600 ms, or 450 ms when fewer than two tokens came. It then finds the conversation's slot free.
-  - **The wait is logged** as `reply: waited N ms for the stopped reply's slot`.
-- **Checked:**
-  - against the fake model server: a reply being written ends at once when it is stopped, the next reply waits the settle time and the log says so, and a reply long after a stop does not wait;
-  - the settle times in a unit test.
-- **The Mac check:** `turn_stages` gains a third case: a chat whose second prompt is stopped at its first text and continued at once. It prints the engine's `reply:` lines, the model server's slot and prompt-token lines for the continue, and "continue after a stop: first text".
-
-## 2026-11-16 · Agents: the title rules now hold on the standard profile
-
-- **#77 did not hold on the Mac.** A second prompt sent at once still waited 6.4 s: the title's model request started within about 0.2 s of the turn ending, and never yielded.
-- **Why:** #77 told titles apart by the model `local:smallest`, which the preset names as its title model. But the harness uses that model only on the low profile. On the standard and high profiles, which Omar's Mac is, the title names the reply's own model. So no title matched, and none waited or yielded.
-- **The fix:** a title is told apart by the harness's own title instruction, its system prompt (`harness_log::history::TITLE_PROMPT`), whatever model it names.
-- **The engine says what each title did,** in its log:
-  - `title: waiting 2000 ms for quiet`;
-  - `title: sent`;
-  - `title: yielded before it was sent`;
-  - `title: yielded while it was being written`.
-  `turn_stages` prints these lines in its timeline. The test no longer counts the first text twice; that had made the Mac run fail on its own bookkeeping.
-- **Checked:**
-  - the adapter tests now ask for titles on the reply's own model, as the standard profile does;
-  - **new: through the whole engine on the standard profile,** a second prompt sent as soon as the first reply ends is answered in well under the quiet period, the chat gets its quick title, the model server never sees a title request, and the engine logs that the title yielded;
-  - with the title rules off, the same test fails, because the chat gets the model's title, so it does test the fix.
-
-## 2026-11-16 · Agents: a person's prompt never waits behind a title
-
-- **What the Mac measured** (`turn_stages`, the 2B model). A second prompt sent as soon as the first reply ended reached its first text after 4.8 s, the same instant the title was written. One sent after the title took 1.8 s. The cache was reused either way (25 prompt tokens evaluated on turn 2), and the check took microseconds.
-- **Why:** after turn 1 the harness writes the chat's title inside that turn, on the model's other slot, re-reading about 200 tokens. A new prompt waits for the turn, and so for the title.
-- **What the engine does now** (`GatewayModel::with_title_quiet`, on in the engine):
-  - a title request waits `TITLE_QUIET` (2 s) after its turn before it is sent;
-  - if a person's turn begins meanwhile (`sessions.send` or `sessions.continue`, through `Gateway::foreground_began`), the title ends at once with `title.yielded`;
-  - it also ends at once if the turn begins while the title is being written. Its model request is then dropped, so the model server stops it.
-  The harness then gives the chat its quick title from the first prompt, and runs the person's turn. Replies never wait.
-- **Title requests are told apart** by the harness's own title instruction, which is their system prompt (`harness_log::history::TITLE_PROMPT`). The model a title names depends on the profile: on the standard and high profiles it is the reply's own model.
-- **What the engine cannot do alone:**
-  - **cancel a prompt evaluation already running on the model server.** A batch in progress finishes first, which is why the quiet period matters most;
-  - **try the model title again after the next turn.** The harness marks a chat titled before it tries, and gives the quick title when a title step fails;
-  - **reuse the conversation slot's cache for the title.** The harness builds the title with its own system prompt, so it shares no prefix with the conversation.
-  These are requests to the harness, filed through the orchestrator.
-- **Checked:**
-  - on tokio's paused clock: a title that meets a turn in its quiet period yields unsent, one that meets none is sent after the period, and a reply is sent at once;
-  - against the fake model server: a title being written yields the moment a turn begins.
-- **The Mac check:** `turn_stages` now fails if the second prompt sent at once reaches its first text later than one and a half times the after-title case plus a second. The engine's title rules are on in it.
+- **The kit document** (`identity::kit`, format `isonomic-recovery-kit`, version 1) is JSON holding:
+  - the ID and when the kit was made;
+  - `recovery`, a 16-character fingerprint of the recovery key;
+  - the person's key log, each signed entry in hex;
+  - `check`, the SHA-256 of the rest.
+  A document that is not a kit, is newer, fails its check, or whose log does not verify is refused, in plain words.
+- **The words are not in the file** (the orchestrator's decision). Export gives them beside the document, for the person to write down on paper; version 1 has no printing. Restore needs both, so a found file alone gives nobody the ID.
+- **The words never reach** the engine's log, a problem report or an error message:
+  - a refusal names a word by its position, never by what was typed;
+  - the export and restore results' debug print hides the words.
+- **The words** (`identity::words`) use the standard 24-word encoding of 32 bytes, with an 8-bit checksum. The standard 2048-word English list is bundled (`recovery_words.txt`) and pinned by its published SHA-256, and the standard's own vectors pass. A wrong count, an unknown word, or a mistyped or swapped word is refused before any key work; case and spaces are ignored.
+- **Export** (`IdentityService::kit_export`) needs `person_asked`. It reads the seed from the key store, records `exported_at` in `identity/kit`, and logs `identity: recovery kit exported`, never the seed.
+- **Restore** (`IdentityService::kit_restore`):
+  - **checks:** the document verifies, the words' checksum holds, and the words derive the recovery key that the log's last entry commits to;
+  - **new keys:** new device keys and a new recovery seed go in this Mac's key store, under the next generation (`identity/keys`);
+  - **the entry:** one entry signed by the kit's recovery key retires every old signing key and commits the new keys. The ID does not change.
+  - **the kit is spent:** a rotation key is used once, so the old kit cannot restore again from the new record. The restore returns a new kit, and `saved_at` is cleared until the person saves it.
+  - **what the person is told:** the restore's `note` says the ID is back, that the kit used (with its date) is spent, to save the new kit and then destroy the old one, and that changes the old Mac made after the kit's date are set aside. The engine logs the same, without the words.
+  - **one limit:** "spent" can be told only from the newer record. A spent kit used on yet another empty Mac still restores, making another fork, since that Mac knows nothing newer. That is why the person is told to destroy the old kit.
+- **Where a restore is allowed:**
+  - on a Capsule with no ID, always;
+  - on a Capsule with an unused ID (no approved app, session or stored file), only with `replace_unused`. The old ID is moved to `identity/replaced-<stamp>/`, never deleted;
+  - otherwise it is refused, and nothing changes.
+- **An older kit,** exported before a later device rotation, still restores: device rotations cannot change the recovery commitment. Its entry then parts ways with the lost Mac's longer log. The library never resolves a fork: on the new Mac the restored log stays in force, and the longer one, if it turns up, is kept in `identity/forks/` and never adopted.
+- **The resource records** are now cached by owner, so a new ID reopens them.
+- **Checked** (`crates/identity/tests/kit.rs`, in-memory key stores, one per Mac):
+  - export, then a fresh Mac, then restore: the same ID; the old signing keys are no longer current, and a new one is;
+  - a new app's approval passes the check, and the kit's saved flag works;
+  - the spent kit is refused;
+  - refused plainly: wrong or swapped words, another kit's words, a damaged document, not a kit, a Capsule with apps, an unused ID without `replace_unused`, and export with no ID;
+  - with `replace_unused`, an unused ID is set aside;
+  - an older kit restores after a device rotation, and the lost Mac's log becomes a fork at entry 1;
+  - **planted words:** after export, restore and refusals, no two words of either kit in a row appear in the document, the log ring, a refusal or a debug print, and a mistyped word is never echoed.
+- **Not yet:** the wire calls (`identity.kit_export`, `kit_restore`, `kit_saved`, `kit_status`) wait for the SDK request. The broker will map these refusals to the new `recovery_refused` code.
 
 ## 2026-11-16 · Identity: approving the same app again signs nothing
 

@@ -29,6 +29,27 @@ pub fn recovery_public_key(seed: &[u8; SEED_BYTES]) -> PublicKey {
         .expect("an Ed25519 key is 32 bytes")
 }
 
+/// The recovery key itself, from `seed`: it signs the one log entry a
+/// restore makes, and is then spent.
+pub struct RecoverySigner(Ed25519KeyPair);
+
+impl RecoverySigner {
+    pub fn new(seed: &[u8; SEED_BYTES]) -> Self {
+        Self(Ed25519KeyPair::from_seed_unchecked(seed).expect("a 32-byte seed"))
+    }
+}
+
+impl id_core::Signer for RecoverySigner {
+    fn public_key(&self) -> PublicKey {
+        PublicKey::new(KeyAlg::Ed25519, self.0.public_key().as_ref().to_vec())
+            .expect("an Ed25519 key is 32 bytes")
+    }
+
+    fn sign(&self, framed: &[u8]) -> Result<Vec<u8>, id_core::Error> {
+        Ok(self.0.sign(framed).as_ref().to_vec())
+    }
+}
+
 /// A new seed from the system's generator.
 pub fn new_seed() -> Result<[u8; SEED_BYTES], ring::error::Unspecified> {
     use ring::rand::{SecureRandom, SystemRandom};

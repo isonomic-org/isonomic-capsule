@@ -286,6 +286,28 @@ pub(crate) async fn handle(stream: UnixStream, system: Arc<dyn System>, services
                 Ok(identity) => Outcome::Result(Reply::Identity(identity)),
                 Err(error) => Outcome::Error(error),
             },
+            // The recovery kit: shell only (`authorize` above). The words
+            // travel in these replies and are never logged here.
+            Call::IdentityKitExport(params) => {
+                match services.identity.kit_export(params.person_asked).await {
+                    Ok(kit) => Outcome::Result(Reply::RecoveryKit(kit)),
+                    Err(error) => Outcome::Error(error),
+                }
+            }
+            Call::IdentityKitRestore(restore) => {
+                match services.identity.kit_restore(restore).await {
+                    Ok(restored) => Outcome::Result(Reply::KitRestored(restored)),
+                    Err(error) => Outcome::Error(error),
+                }
+            }
+            Call::IdentityKitSaved(_) => match services.identity.kit_saved().await {
+                Ok(()) => Outcome::Result(Reply::Done {}),
+                Err(error) => Outcome::Error(error),
+            },
+            Call::IdentityKitStatus(_) => match services.identity.kit_status().await {
+                Ok(status) => Outcome::Result(Reply::KitStatus(status)),
+                Err(error) => Outcome::Error(error),
+            },
             call if call.interface() == Interface::Agents => {
                 match services.agents.answer(manifest.as_ref(), call).await {
                     Ok(AgentsAnswer::Reply(reply)) => Outcome::Result(reply),
