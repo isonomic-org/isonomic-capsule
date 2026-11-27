@@ -260,6 +260,7 @@ async fn rig(clock: Shared) -> (tempfile::TempDir, AppClient) {
         agents: Arc::new(host),
         models: gateway,
         identity: Arc::new(identity),
+        connections: Arc::new(broker::NoConnections),
     };
     let system = StackSystem::new(
         Arc::new(supervisor::Stack::new(None)),

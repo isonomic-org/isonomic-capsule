@@ -256,6 +256,8 @@ async fn run() -> Result<(), AnyError> {
         agents: Arc::new(host),
         models: gateway,
         identity: Arc::new(identity),
+        // Tool server connections come in the next change.
+        connections: Arc::new(broker::NoConnections),
     };
     let server = tokio::spawn(broker::serve(listener, system.clone(), Arc::new(services)));
 

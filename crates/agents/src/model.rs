@@ -18,11 +18,10 @@ use gateway::Gateway;
 use harness_core::future::BoxStream;
 use harness_core::{ErrorInfo, Usage};
 use harness_host::{CancelToken, ModelCaps, ModelClient};
-use harness_log::{ModelEvent, ModelRequest, ModelStop, Part, Role as LogRole};
+use harness_log::{ModelEvent, ModelRequest, ModelStop};
 use isonomic_inference_core::Capability;
 use isonomic_model_library::ModelEntry;
 use isonomic_proto::auth::Caller;
-use isonomic_proto::models::{Message, Role, StreamRequest};
 use tokio::sync::mpsc;
 
 pub struct GatewayModel {
@@ -89,78 +88,6 @@ impl GatewayModel {
     }
 }
 
-/// A message's words. Request context (the date, the language) is left
-/// out: it goes to the system message, see [`request`].
-fn text(parts: &[Part]) -> String {
-    let mut out = String::new();
-    for part in parts {
-        let piece = match part {
-            Part::Text { text } | Part::Summary { text } => text,
-            Part::Attachment { name, text, .. } => {
-                out.push_str(&format!("[{name}]\n"));
-                text
-            }
-            Part::Mention { label, .. } => label,
-            // Tool calls and results: V1 sessions use none.
-            _ => continue,
-        };
-        if !out.is_empty() && !out.ends_with('\n') {
-            out.push('\n');
-        }
-        out.push_str(piece);
-    }
-    out
-}
-
-/// The harness's request as the gateway takes it.
-///
-/// The request context the harness puts in a user turn ("Current date: …")
-/// moves to the end of the system message, latest only. Small local models
-/// read it there as background; glued to the person's words, it made them
-/// ask which day was meant instead of answering.
-fn request(model: Option<String>, req: &ModelRequest) -> StreamRequest {
-    let mut messages = Vec::with_capacity(req.messages.len() + 1);
-    let context = req.messages.iter().rev().find_map(|m| {
-        m.content.iter().rev().find_map(|p| match p {
-            Part::Context { text } => Some(text.clone()),
-            _ => None,
-        })
-    });
-    let system = match (req.system.is_empty(), context) {
-        (true, None) => None,
-        (false, None) => Some(req.system.clone()),
-        (true, Some(context)) => Some(context),
-        (false, Some(context)) => Some(format!("{}\n\n{context}", req.system)),
-    };
-    if let Some(system) = system {
-        messages.push(Message::system(system));
-    }
-    for m in &req.messages {
-        let role = match m.role {
-            LogRole::User => Role::User,
-            LogRole::Assistant => Role::Assistant,
-            LogRole::Tool => Role::Tool,
-        };
-        messages.push(Message {
-            role,
-            content: text(&m.content),
-            tool_calls: Vec::new(),
-            tool_call_id: None,
-        });
-    }
-    let reasoning = serde_json::to_value(&req.params.reasoning).ok();
-    let off = reasoning.as_ref().and_then(|v| v.as_str()) == Some("off");
-    StreamRequest {
-        model,
-        messages,
-        tools: Vec::new(),
-        temperature: None,
-        max_tokens: Some(req.params.max_output_tokens).filter(|n| *n > 0),
-        // Off when the preset says so; otherwise the engine decides.
-        reasoning: off.then_some(false),
-    }
-}
-
 /// Shortly after a stop, wait until the model server has ended the stopped
 /// reply, so this one gets the conversation's slot; without a slot list,
 /// wait about one token gap instead ([`crate::settle`]).
@@ -209,7 +136,8 @@ impl ModelClient for GatewayModel {
             // assistant prefill), which is how the harness asks to continue.
             prefill: true,
             reasoning: true,
-            tools: false,
+            // Tools reach the local model server, which calls them back.
+            tools: true,
             context_tokens: u64::from(context),
         }
     }
@@ -232,7 +160,7 @@ impl ModelClient for GatewayModel {
             }
         };
         let model_id = model.clone();
-        let request = request(model, &req);
+        let request = crate::model_request::request(model, &req);
         let titling = is_title(&req);
         let quiet = self.title_quiet.filter(|_| titling);
         let replied = Arc::clone(&self.replied);
@@ -287,6 +215,7 @@ impl ModelClient for GatewayModel {
                 }
             };
             let mut stop = ModelStop::End;
+            let mut calls = crate::tool_calls::ToolCalls::default();
             // The server streams about one token per chunk and reports no
             // usage through the provider, so chunks stand in for tokens.
             let mut chunks: u64 = 0;
@@ -341,8 +270,25 @@ impl ModelClient for GatewayModel {
                 {
                     return;
                 }
-                if chunk.finish_reason.as_deref() == Some("length") {
-                    stop = ModelStop::MaxTokens;
+                for delta in chunk.tool_calls {
+                    calls.push(delta);
+                }
+                match chunk.finish_reason.as_deref() {
+                    Some("length") => stop = ModelStop::MaxTokens,
+                    Some("tool_calls") => stop = ModelStop::ToolUse,
+                    _ => {}
+                }
+            }
+            if !calls.is_empty() {
+                stop = ModelStop::ToolUse;
+            }
+            for (tool, input) in calls.finish() {
+                if tx
+                    .send(Ok(ModelEvent::ToolCall { tool, input }))
+                    .await
+                    .is_err()
+                {
+                    return;
                 }
             }
             let usage = Usage {
@@ -366,53 +312,6 @@ impl harness_core::future::Stream for Events {
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Option<Self::Item>> {
         self.get_mut().0.poll_recv(cx)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_continue_request_ends_with_the_partial_reply() {
-        let req: ModelRequest = serde_json::from_value(serde_json::json!({
-            "model": "local:default",
-            "params": {"max_output_tokens": 256, "reasoning": "off"},
-            "system": "Be brief.",
-            "messages": [
-                {"role": "user", "content": [{"type": "text", "text": "Count to five"}]},
-                {"role": "assistant", "content": [{"type": "text", "text": "One, two,"}]}
-            ],
-            "prefill": true
-        }))
-        .unwrap();
-        let out = request(Some("chat-small".into()), &req);
-        let roles: Vec<_> = out.messages.iter().map(|m| m.role).collect();
-        assert_eq!(out.messages[0].content, "Be brief.");
-        assert_eq!(roles, [Role::System, Role::User, Role::Assistant]);
-        assert_eq!(out.messages[2].content, "One, two,");
-        assert_eq!(out.max_tokens, Some(256));
-        assert_eq!(out.reasoning, Some(false));
-    }
-
-    #[test]
-    fn the_request_context_moves_from_the_user_turn_to_the_system_message() {
-        let req: ModelRequest = serde_json::from_value(serde_json::json!({
-            "model": "local:default",
-            "params": {"max_output_tokens": 64, "reasoning": "off"},
-            "system": "Be brief.",
-            "messages": [{"role": "user", "content": [
-                {"type": "context", "text": "Current date: Sunday, 15 November 2026. Language: en."},
-                {"type": "text", "text": "Plan one day in Lisbon."}
-            ]}]
-        }))
-        .unwrap();
-        let out = request(None, &req);
-        assert_eq!(
-            out.messages[0].content,
-            "Be brief.\n\nCurrent date: Sunday, 15 November 2026. Language: en."
-        );
-        assert_eq!(out.messages[1].content, "Plan one day in Lisbon.");
     }
 }
 

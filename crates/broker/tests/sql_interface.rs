@@ -57,6 +57,7 @@ async fn a_live_query_follows_writes_and_only_its_opener_ends_it() {
         agents: Arc::new(broker::NoAgents),
         models: Arc::new(broker::NoModels),
         identity: Arc::new(broker::identity::NoIdentity),
+        connections: Arc::new(broker::NoConnections),
     };
     let stack = Arc::new(supervisor::Stack::new(None));
     let hardware = Arc::new(FixedHardware::with_total(16 << 30));
@@ -128,6 +129,7 @@ async fn granting_chats_manifest_sets_its_schema_up_at_once() {
         agents: Arc::new(broker::NoAgents),
         models: Arc::new(broker::NoModels),
         identity: Arc::new(broker::identity::NoIdentity),
+        connections: Arc::new(broker::NoConnections),
     };
     let stack = Arc::new(supervisor::Stack::new(None));
     let hardware = Arc::new(FixedHardware::with_total(16 << 30));

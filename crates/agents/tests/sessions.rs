@@ -69,6 +69,7 @@ async fn engine() -> Engine {
         agents: Arc::new(host),
         models: Arc::new(broker::NoModels),
         identity: Arc::new(broker::identity::NoIdentity),
+        connections: Arc::new(broker::NoConnections),
     };
     let stack = Arc::new(supervisor::Stack::new(None));
     let hardware = Arc::new(FixedHardware::with_total(16 << 30));

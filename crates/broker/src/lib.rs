@@ -12,6 +12,7 @@ pub mod agents;
 pub mod apps;
 pub mod blobs;
 mod conn;
+pub mod connections;
 pub mod events;
 pub mod host;
 pub mod identity;
@@ -29,6 +30,7 @@ use tokio::sync::broadcast;
 pub use agents::{Agents, AgentsAnswer, NoAgents};
 pub use apps::{Apps, TokenKey};
 pub use blobs::Blobs;
+pub use connections::{Connections, NoConnections};
 pub use events::Events;
 pub use host::StackSystem;
 pub use identity::{Identity, NoIdentity};
@@ -120,6 +122,8 @@ pub struct Services {
     pub models: Arc<dyn Models>,
     /// The person's Isonomic ID (`identity.get`, shell only).
     pub identity: Arc<dyn identity::Identity>,
+    /// The person's tool server connections (`connections.*`, shell only).
+    pub connections: Arc<dyn connections::Connections>,
 }
 
 /// Accept connections until the task is dropped.

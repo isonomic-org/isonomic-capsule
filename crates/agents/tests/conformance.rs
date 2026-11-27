@@ -15,6 +15,8 @@
 //!
 //! (The server refuses to run as root.) Every check must pass.
 
+mod conformance_support;
+
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -60,6 +62,7 @@ async fn conform(paths: &CapsulePaths, stack: Arc<Stack>, db: Arc<dyn Database>)
             identity::memory_backend(),
             Arc::new(SystemClock),
         ))),
+        connections: Arc::new(conformance_support::MemoryConnections::default()),
     };
     let socket = paths.engine_socket();
     let bound = broker::bind(&socket).unwrap();

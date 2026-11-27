@@ -99,6 +99,7 @@ async fn rig(slow: bool) -> Rig {
         agents: Arc::new(broker::NoAgents),
         models: Arc::new(gateway),
         identity: Arc::new(broker::identity::NoIdentity),
+        connections: Arc::new(broker::NoConnections),
     };
     let stack = Arc::new(supervisor::Stack::new(None));
     let hardware = Arc::new(FixedHardware::with_total(16 << 30));

@@ -32,6 +32,17 @@ impl Catalogue {
         }
     }
 
+    /// Whether this is a slow machine: models run on the processor alone,
+    /// or the profile is low.
+    pub fn slow(&self) -> bool {
+        self.slow
+    }
+
+    /// Every model of the manifest, installed or not.
+    pub fn entries(&self) -> &[ModelEntry] {
+        self.manifest.entries()
+    }
+
     /// The model directory.
     pub fn dir(&self) -> &Path {
         &self.dir

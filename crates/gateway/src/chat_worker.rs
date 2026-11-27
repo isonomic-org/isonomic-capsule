@@ -48,8 +48,9 @@ pub fn configure(config: &mut LlamaConfig, entry: &ModelEntry, models_dir: &Path
         return;
     }
     match write_template(models_dir) {
+        // The server's template engine (`--jinja`) is the inference
+        // library's own argument in chat mode, for tools.
         Ok(path) => config.extra_args.extend([
-            "--jinja".to_string(),
             "--chat-template-file".to_string(),
             path.to_string_lossy().into_owned(),
         ]),

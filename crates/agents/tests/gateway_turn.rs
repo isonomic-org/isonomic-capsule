@@ -82,6 +82,7 @@ async fn a_chat_turn_streams_from_the_gateway_into_the_log() {
         agents: Arc::new(host),
         models: gateway,
         identity: Arc::new(broker::identity::NoIdentity),
+        connections: Arc::new(broker::NoConnections),
     };
     let stack = Arc::new(supervisor::Stack::new(None));
     let system = StackSystem::new(
@@ -191,6 +192,7 @@ async fn a_stopped_reply_continues_from_its_partial_text() {
         agents: Arc::new(host),
         models: gateway,
         identity: Arc::new(broker::identity::NoIdentity),
+        connections: Arc::new(broker::NoConnections),
     };
     let stack = Arc::new(supervisor::Stack::new(None));
     let system = StackSystem::new(

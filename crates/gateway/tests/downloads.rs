@@ -156,6 +156,7 @@ async fn rig_on(total_memory_bytes: u64, free: u64, prepare: impl FnOnce(&std::p
         agents: Arc::new(broker::NoAgents),
         models: Arc::new(gateway),
         identity: Arc::new(broker::identity::NoIdentity),
+        connections: Arc::new(broker::NoConnections),
     };
     let stack = Arc::new(supervisor::Stack::new(None));
     let system = StackSystem::new(
@@ -380,4 +381,39 @@ async fn a_download_cut_off_by_a_quit_picks_up_its_part_and_installs_whole() {
         done.error
     );
     assert_eq!(models.info("big").await.unwrap().state, ModelState::Stopped);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn remove_deletes_an_installed_file_and_refuses_a_running_download() {
+    let rig = rig(16 << 30).await;
+    rig.hold.send_replace(true);
+    let models = rig.shell.models();
+    assert_eq!(
+        code(models.remove("nothing").await),
+        ErrorCode::UnknownModel
+    );
+    assert_eq!(code(models.remove("big").await), ErrorCode::NotInstalled);
+
+    let mut stream = models.download("big").await.unwrap();
+    next(&mut stream).await.unwrap();
+    assert_eq!(code(models.remove("big").await), ErrorCode::DownloadRunning);
+    rig.hold.send_replace(false);
+    assert_eq!(
+        last(&mut stream).await.outcome,
+        Some(DownloadOutcome::Installed)
+    );
+
+    models.remove("big").await.unwrap();
+    assert_eq!(
+        models.info("big").await.unwrap().state,
+        ModelState::NotInstalled
+    );
+    models.remove("small").await.unwrap();
+    assert_eq!(code(models.remove("small").await), ErrorCode::NotInstalled);
+    // Downloading it again works as the first time.
+    let mut again = models.download("big").await.unwrap();
+    assert_eq!(
+        last(&mut again).await.outcome,
+        Some(DownloadOutcome::Installed)
+    );
 }

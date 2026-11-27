@@ -2,6 +2,15 @@
 
 Newest first. The model gateway: local models through isonomic-inference, the catalogue, downloads and the chat workers. Moved here from `docs/status.md`.
 
+## 2026-11-27 · Gateway: the model setup, and tools
+
+- **`models.catalogue`** (shell only): every chat and embedding model of the manifest, in its order, each with its `models.info` detail (state included). The manifest is the only source of local models, so an installed model is always one of its entries.
+  - `fits` and `fit_reason` come from the machine, never from what is free now (`gateway::fit`). Below `MEMORY_FLOOR` nothing is recommended, and the reason gives the machine's memory and the floor. A model over the profile's ceiling (`Profile::max_model_bytes`) is not recommended. Nor is one whose manifest entry asks for more memory (`min_ram_gb`) than the machine has: "Needs a Mac with at least 32 GB of memory to run well. This Mac has 16 GB, so other apps would slow down." An entry without `min_ram_gb` is not recommended when it would need more than three quarters of the memory while it runs. On a slow machine (models on the processor alone, or the low profile), a chat model bigger than `SLOW_CHAT_MODEL` is not recommended, because it answers slowly. What a model needs while it runs is estimated as its file, a fifth more for the conversation, and half a GiB for the runtime.
+  - `about` and `publisher` are the manifest entry's own (the inference library's 36-model catalogue).
+- **`models.remove`** (shell only): `unknown_model`, `download_running` while its download runs, `not_installed` without the whole file. A model whose worker runs is unloaded first; a later stream naming it gets `model_unavailable`.
+- **Tools:** a stream's tools go to the model server (a schema that is not a JSON object is `bad_request`), assistant messages keep their calls and tool messages their `tool_call_id`. Call fragments are forwarded as `tool_calls` deltas, and the stop is `tool_calls`. The `--jinja` flag is now the inference library's own in chat mode, so the gateway no longer passes it.
+- **Tests:** `tests/model_setup.rs` (catalogue on 16 and 8 GB, an app refused, a tool stream against the fake server, removing a loaded model), `tests/downloads.rs` (remove during and after a download), and the fit rules' unit tests.
+
 ## 2026-11-16 · Gateway: a model stays loaded for its profile's idle time
 
 - A local model's worker is unloaded after the profile's idle time (`Profile::model_idle_unload`): 5 min on low, 15 min on standard, never on high. Before this, every profile used the inference supervisor's default, 5 min. On the 16 GB Intel Mac (standard), a reader who answered after 5 minutes paid a cold load (about 5 s there) and a full re-read of the conversation. The test covers each profile and the default.

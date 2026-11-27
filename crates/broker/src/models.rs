@@ -56,10 +56,18 @@ impl Models for NoModels {
     ) -> BoxFuture<'a, Result<ModelsAnswer, WireError>> {
         let method = call.method();
         Box::pin(async move {
-            Err(WireError::new(
-                ErrorCode::UnknownMethod,
-                format!("this engine does not serve {method} yet"),
-            ))
+            match call {
+                // No models: the catalogue is empty and none can be removed.
+                Call::ModelsCatalogue(_) => Ok(ModelsAnswer::Reply(Reply::Catalogue(Vec::new()))),
+                Call::ModelsRemove(r) => Err(WireError::new(
+                    ErrorCode::UnknownModel,
+                    format!("no model {}", r.id),
+                )),
+                _ => Err(WireError::new(
+                    ErrorCode::UnknownMethod,
+                    format!("this engine does not serve {method} yet"),
+                )),
+            }
         })
     }
 }

@@ -11,11 +11,13 @@
 mod convert;
 pub mod deps;
 mod model;
+mod model_request;
 mod scopes;
 mod service;
 pub mod settle;
 mod start;
 mod store;
+mod tool_calls;
 
 pub use model::{is_title, GatewayModel, TITLE_QUIET, YIELDED};
 pub use scopes::{EngineScopes, USER_ACTION_TTL_SECS};

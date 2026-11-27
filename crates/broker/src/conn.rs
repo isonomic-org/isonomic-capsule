@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use isonomic_proto::auth::{authorize, Caller, Interface};
+use isonomic_proto::connections::Connection;
 use isonomic_proto::io::{read_frame, write_message};
 use isonomic_proto::lenient::{decode_client, FromClient};
 use isonomic_proto::{
@@ -18,7 +19,7 @@ use isonomic_proto::{
 use tokio::net::unix::OwnedWriteHalf;
 use tokio::net::UnixStream;
 use tokio::sync::broadcast::error::RecvError;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{broadcast, mpsc, oneshot};
 use tokio::task::JoinHandle;
 
 use crate::agents::{AgentsAnswer, Starter};
@@ -43,25 +44,49 @@ async fn write_loop(mut writer: OwnedWriteHalf, mut outbox: mpsc::Receiver<Serve
     }
 }
 
-/// Forward status changes to one subscriber until either side goes away.
+/// Forward status changes, and each connection's changes, to one
+/// subscriber until either side goes away.
 fn forward(
     system: Arc<dyn System>,
+    connections: Option<broadcast::Receiver<Connection>>,
     subscription: u64,
     outbox: mpsc::Sender<ServerMessage>,
 ) -> JoinHandle<()> {
     let mut changes = system.changes();
+    let mut connections = connections;
     tokio::spawn(async move {
         loop {
-            let batch = match changes.recv().await {
-                Ok(status) => vec![status],
-                // The subscriber fell behind: resend everything so it converges.
-                Err(RecvError::Lagged(_)) => system.status().services,
-                Err(RecvError::Closed) => return,
+            let next = async {
+                match connections.as_mut() {
+                    Some(rx) => Some(rx.recv().await),
+                    None => std::future::pending().await,
+                }
             };
-            for status in batch {
+            let events = tokio::select! {
+                status = changes.recv() => match status {
+                    Ok(status) => vec![Event::ServiceStatus(status)],
+                    // The subscriber fell behind: resend everything so it converges.
+                    Err(RecvError::Lagged(_)) => system
+                        .status()
+                        .services
+                        .into_iter()
+                        .map(Event::ServiceStatus)
+                        .collect(),
+                    Err(RecvError::Closed) => return,
+                },
+                Some(change) = next => match change {
+                    Ok(connection) => vec![Event::Connection(connection)],
+                    Err(RecvError::Lagged(_)) => continue,
+                    Err(RecvError::Closed) => {
+                        connections = None;
+                        continue;
+                    }
+                },
+            };
+            for event in events {
                 let event = ServerMessage::Event {
                     subscription,
-                    event: Event::ServiceStatus(status),
+                    event,
                 };
                 if outbox.send(event).await.is_err() {
                     return;
@@ -181,7 +206,12 @@ pub(crate) async fn handle(stream: UnixStream, system: Arc<dyn System>, services
                 next_subscription += 1;
                 then_forward = Some((
                     subscription,
-                    forward(Arc::clone(&system), subscription, outbox.clone()),
+                    forward(
+                        Arc::clone(&system),
+                        services.connections.changes(),
+                        subscription,
+                        outbox.clone(),
+                    ),
                 ));
                 Outcome::Result(Reply::Subscribed {
                     subscription,
@@ -308,6 +338,12 @@ pub(crate) async fn handle(stream: UnixStream, system: Arc<dyn System>, services
                 Ok(status) => Outcome::Result(Reply::KitStatus(status)),
                 Err(error) => Outcome::Error(error),
             },
+            call if call.interface() == Interface::Connections => {
+                match services.connections.call(call).await {
+                    Ok(reply) => Outcome::Result(reply),
+                    Err(error) => Outcome::Error(error),
+                }
+            }
             call if call.interface() == Interface::Agents => {
                 match services.agents.answer(manifest.as_ref(), call).await {
                     Ok(AgentsAnswer::Reply(reply)) => Outcome::Result(reply),
