@@ -236,6 +236,7 @@ async fn rig(clock: Shared) -> (tempfile::TempDir, AppClient) {
         profile: Profile::Standard,
         engine_tools: false,
         gateway: Some(Arc::clone(&gateway)),
+        connections: None,
     })
     .await
     .unwrap();

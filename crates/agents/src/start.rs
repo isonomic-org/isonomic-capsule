@@ -29,6 +29,11 @@ pub struct Parts {
     /// Checks the model a session is created with (the stream rule);
     /// `None` passes any name, for hosts on a scripted model.
     pub gateway: Option<Arc<gateway::Gateway>>,
+    /// The person's connected apps. Their tools (`connections`,
+    /// `connection_read`, `connection_act`) are offered to sessions whose
+    /// preset allows them; `connection_act` goes through the harness's
+    /// approval, never run without asking.
+    pub connections: Option<Arc<dyn harness_toolkit::services::Connections>>,
 }
 
 fn profile(p: capsule_core::Profile) -> Profile {
@@ -61,6 +66,9 @@ pub async fn start(parts: Parts) -> Result<EngineAgents, harness_host::HostError
         true => toolkit(Arc::new(parts.locale)),
         false => Vec::new(),
     };
+    if let Some(service) = parts.connections {
+        config.tools.extend(harness_toolkit::connected(service));
+    }
     config.profile = Some(profile(parts.profile));
     let host = Host::new(deps, config);
     host.recover().await?;

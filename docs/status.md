@@ -14,6 +14,12 @@ Newest first. This file is the engine's status from now on. The history of each 
 - [Problem reports](status/reports.md): the engine's own reports, the log ring, the shared crate.
 - [Later modules](status/engine-later.md): reserved crates.
 
+## 2026-11-27 · Connected apps in chat sessions
+
+- **Pins:** `SDK_REF` da00077, `INFERENCE_REF` 6f71866, the harness at ef14f17, as the SDK pins it. `UI_REF` stays 6e0c4a5.
+- **Chat sessions get the connected-app tools** (`connections`, `connection_read`, `connection_act`, from `harness_toolkit::connected`) over the engine's connections. `connection_act` waits for the person's approval. See [Connections](status/connections.md).
+- **`Connections::operations`** lists a connection's tools with their input schema and `reads_only` from the server's `readOnlyHint` (false when it says nothing).
+
 ## 2026-11-27 · Tool server connections
 
 - **A new crate, `connections`,** keeps the person's tool servers and answers `connections.list`, `add`, `sign_in`, `remove` and `tools` for the shell (`connections::wire::Wire` behind `broker::Connections`). Each change of state is a `connection` event on the shell's status subscription. See [Connections](status/connections.md).

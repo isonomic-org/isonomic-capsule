@@ -45,6 +45,7 @@ async fn conform(paths: &CapsulePaths, stack: Arc<Stack>, db: Arc<dyn Database>)
         profile: Profile::Standard,
         engine_tools: false,
         gateway: None,
+        connections: None,
     };
     let host = agents::start(parts).await.unwrap();
     let services = Services {

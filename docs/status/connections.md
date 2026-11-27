@@ -2,6 +2,12 @@
 
 Newest first. The person's tool servers (`crates/connections`): kept, signed in to and called by the engine.
 
+## 2026-11-27 · Connected apps in chat sessions
+
+- **Chat sessions** get `connections`, `connection_read` and `connection_act` (`harness_toolkit::connected`) over `connections::service::Service` when the engine has its connections. A read-only tool goes through `connection_read`; any other through `connection_act`, which waits for the person's approval.
+- **`operations`** gives each tool's name, description, input schema and `reads_only` (the server's `readOnlyHint`, false by default).
+- **Test:** `agents/tests/connected_apps.rs`. A scripted model reads through the stand-in local server and the result reaches its next request; an act waits for approval and nothing is sent before it.
+
 ## 2026-11-27 · Connections: local and remote tool servers, browser sign-in
 
 - **What is kept.** The list is `connections.json` in the Capsule directory: each connection's id, name, catalogue key and server, and no secrets. It is written whole to a temporary file and renamed into place before any event goes out (persist, then publish). Secrets (a pasted token, a sign-in's tokens) are kept in the login keychain under `com.isonomic.connections`, the way the identity crate keeps its seed. They are kept in memory on other systems and for a scratch Capsule, so they last one run there. A removed connection's secrets are deleted, and its server is stopped.
@@ -18,4 +24,3 @@ Newest first. The person's tool servers (`crates/connections`): kept, signed in 
 - **For the harness** (`connections::service::Service`): `harness_toolkit::services::Connections`. A handle is a connection's id and its operations are its tools. Every app sees every ready connection until app manifests name the connections they need. Results are cut to 16 KB, saying so.
 - **Dependencies:** none new. HTTP and TLS come from the workspace's `reqwest` 0.12 with rustls; randomness from `ring`; hashing from `sha2`.
 - **Tests:** a stand-in local server script (`tests/stdio.rs`: the environment allow-list, tools with their hints, a call, reconnect after a restart, removal, a command that does not start). A fake remote server and sign-in server on loopback (`tests/http.rs`: a pasted token, the session id, the whole sign-in with registration and PKCE checked, a stray return ignored, a refresh, reconnect with a kept sign-in, a server with no registration). And the SDK's conformance checks.
-- **Next:** offer the connected-app tools (`connections`, `connection_read`, `connection_act`) to chat sessions with the harness at ef14f17. `connection_act` goes through the harness's approval. Then implement `Connections::operations` from each server's tools, and add an engine test where a chat turn reads through a connection.

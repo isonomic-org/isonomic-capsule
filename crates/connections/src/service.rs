@@ -57,6 +57,23 @@ impl services::Connections for Service {
         Box::pin(async move { ready })
     }
 
+    fn operations(&self, _owner: &AppId, handle: &str) -> BoxFuture<'_, Vec<services::Operation>> {
+        let operations = self
+            .0
+            .tools(handle)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|t| services::Operation {
+                name: t.name,
+                description: t.description,
+                input_schema: serde_json::from_value(t.input_schema).unwrap_or_default(),
+                // A tool only reads when its server says so.
+                reads_only: t.read_only,
+            })
+            .collect();
+        Box::pin(async move { operations })
+    }
+
     fn call(
         &self,
         _owner: &AppId,

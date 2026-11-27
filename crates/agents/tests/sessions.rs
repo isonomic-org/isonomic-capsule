@@ -59,6 +59,7 @@ async fn engine() -> Engine {
         profile: Profile::Standard,
         engine_tools: false,
         gateway: None,
+        connections: None,
     };
     let host = agents::start(parts).await.unwrap();
     let services = Services {
