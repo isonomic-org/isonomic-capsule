@@ -15,6 +15,7 @@ dependencies = [
  "appdb",
  "broker",
  "capsule-core",
+ "connections",
  "futures-util",
  "gateway",
  "harness-core",
@@ -265,6 +266,25 @@ name = "cmov"
 version = "0.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c9ea0ac24bc397ab3c98583a3c9ba74fa56b09a4449bbe172b9b1ddb016027a"
+
+[[package]]
+name = "connections"
+version = "0.9.0"
+dependencies = [
+ "broker",
+ "futures-util",
+ "harness-core",
+ "harness-toolkit",
+ "isonomic-proto",
+ "reqwest",
+ "ring",
+ "security-framework 3.7.0",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "tokio",
+]
 
 [[package]]
 name = "const-oid"
@@ -1195,6 +1215,7 @@ dependencies = [
  "appdb",
  "broker",
  "capsule-core",
+ "connections",
  "gateway",
  "identity",
  "isonomic-model-library",

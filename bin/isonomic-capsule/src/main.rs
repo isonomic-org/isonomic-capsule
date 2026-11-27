@@ -193,6 +193,25 @@ async fn run() -> Result<(), AnyError> {
         "locale: {} ({} min), {}",
         locale.zone, locale.offset_minutes, locale.language
     ));
+    // The person's tool server connections, reconnected now. A local
+    // server gets the minimal environment, a search path that finds the
+    // usual command-line tools, and the home folder; nothing else.
+    let mut server_env = ChildEnv::minimal().with("PATH", connections::wire::LOCAL_SERVER_PATH);
+    if let Some(home) = std::env::var_os("HOME").and_then(|h| h.into_string().ok()) {
+        server_env = server_env.with("HOME", home);
+    }
+    let server_env = server_env
+        .vars()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+    let connections =
+        match connections::wire::open_for_engine(paths.root(), server_env, marker.scratch) {
+            Ok(list) => Some(list),
+            Err(e) => {
+                log(format!("connections unavailable: {e}"));
+                None
+            }
+        };
     let host = agents::start(agents::Parts {
         store: Arc::new(agents::SqliteSessionStore::open(&paths.registry_db())?),
         scopes: Arc::new(agents::EngineScopes::new(
@@ -256,8 +275,10 @@ async fn run() -> Result<(), AnyError> {
         agents: Arc::new(host),
         models: gateway,
         identity: Arc::new(identity),
-        // Tool server connections come in the next change.
-        connections: Arc::new(broker::NoConnections),
+        connections: match &connections {
+            Some(list) => Arc::new(connections::wire::Wire(Arc::clone(list))),
+            None => Arc::new(broker::NoConnections),
+        },
     };
     let server = tokio::spawn(broker::serve(listener, system.clone(), Arc::new(services)));
 
