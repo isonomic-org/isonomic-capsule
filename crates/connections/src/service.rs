@@ -43,6 +43,13 @@ fn error(code: &str, message: impl Into<String>) -> ServiceError {
 }
 
 impl services::Connections for Service {
+    /// The connected-app tools are offered only while something is ready,
+    /// so a session with nothing connected is not told about tools that
+    /// cannot work.
+    fn offered(&self, _owner: &AppId) -> bool {
+        !self.0.ready().is_empty()
+    }
+
     fn list(&self, _owner: &AppId) -> BoxFuture<'_, Vec<services::Connection>> {
         let ready = self
             .0
@@ -101,5 +108,25 @@ impl services::Connections for Service {
                 Err(message) => Err(error("connection.denied", message)),
             }
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{MemoryVault, Options};
+    use harness_toolkit::services::Connections as _;
+
+    #[test]
+    fn nothing_ready_means_the_tools_are_not_offered() {
+        let dir = tempfile::tempdir().unwrap();
+        let list = Connections::open(
+            dir.path(),
+            Arc::new(MemoryVault::default()),
+            Options::default(),
+        )
+        .unwrap();
+        let service = Service(list);
+        assert!(!service.offered(&AppId::from("com.isonomic.chat")));
     }
 }
