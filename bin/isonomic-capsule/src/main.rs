@@ -227,6 +227,10 @@ async fn run() -> Result<(), AnyError> {
         profile,
         engine_tools: false,
         gateway: Some(Arc::clone(&gateway)),
+        // The connected apps' tools, over the person's connections.
+        connections: connections
+            .as_ref()
+            .map(|list| Arc::new(connections::service::Service(Arc::clone(list))) as _),
     })
     .await
     .map_err(|e| format!("the agents host did not start: {e:?}"))?;

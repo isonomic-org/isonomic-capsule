@@ -87,6 +87,7 @@ async fn rig(check: bool) -> Rig {
         profile: Profile::Standard,
         engine_tools: false,
         gateway: check.then(|| Arc::clone(&gateway)),
+        connections: None,
     })
     .await
     .unwrap();

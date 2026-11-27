@@ -98,6 +98,7 @@ pub async fn shell_with(root: &Path, port: u16, title_quiet: Option<Duration>) -
         profile: Profile::Standard,
         engine_tools: false,
         gateway: Some(Arc::clone(&gateway)),
+        connections: None,
     })
     .await
     .unwrap();
