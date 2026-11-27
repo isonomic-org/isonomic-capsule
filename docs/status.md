@@ -9,9 +9,16 @@ Newest first. This file is the engine's status from now on. The history of each 
 - [Engine core and supervisor](status/engine-supervisor.md): profiles, the lazy tier, the RAM gate.
 - [Services](status/engine-services.md): the database, the cache, the vector database.
 - [Packaging](status/packaging.md): bundled services and the app bundle.
+- [Connections](status/connections.md): the person's tool servers, their sign-ins and tools.
 - [Identity](status/identity.md): the person's Isonomic ID, apps' IDs and grants, the check on every call.
 - [Problem reports](status/reports.md): the engine's own reports, the log ring, the shared crate.
 - [Later modules](status/engine-later.md): reserved crates.
+
+## 2026-11-27 · Tool server connections
+
+- **A new crate, `connections`,** keeps the person's tool servers and answers `connections.list`, `add`, `sign_in`, `remove` and `tools` for the shell (`connections::wire::Wire` behind `broker::Connections`). Each change of state is a `connection` event on the shell's status subscription. See [Connections](status/connections.md).
+- **The conformance run** now uses the real connections in place of the in-memory stand-in.
+- **Not yet:** the connected-app tools in chat sessions. They need the harness at ef14f17 (`harness_toolkit::connected`, `Connections::operations`), which comes with the SDK's repin. The code is ready for that change.
 
 ## 2026-11-27 · The model setup, and tools on local models
 

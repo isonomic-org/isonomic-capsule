@@ -13,6 +13,7 @@ agents.workspace = true
 appdb.workspace = true
 broker.workspace = true
 capsule-core.workspace = true
+connections.workspace = true
 identity.workspace = true
 packaging.workspace = true
 registry.workspace = true
