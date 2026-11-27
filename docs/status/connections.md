@@ -2,6 +2,12 @@
 
 Newest first. The person's tool servers (`crates/connections`): kept, signed in to and called by the engine.
 
+## 2026-11-27 · Connection tools only when something is connected
+
+- **`Service::offered`** is true only while a connection is ready, so a new chat session with nothing connected is not offered `connections`, `connection_read` or `connection_act`, and the preset's tools section is left out of its prompt. Before this, the small local model answered plain requests with "I don't have access to a ... connected to your device". A session keeps the tools it started with.
+- **Harness** at d7d8ab6 (harness #56, `Tool::offered` and `Connections::offered`); SDK_REF moves to the SDK at that harness.
+- **Test:** `service::tests::nothing_ready_means_the_tools_are_not_offered`; `agents/tests/connected_apps.rs` still sees the tools with a ready connection.
+
 ## 2026-11-27 · Connected apps in chat sessions
 
 - **Chat sessions** get `connections`, `connection_read` and `connection_act` (`harness_toolkit::connected`) over `connections::service::Service` when the engine has its connections. A read-only tool goes through `connection_read`; any other through `connection_act`, which waits for the person's approval.
