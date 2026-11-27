@@ -13,6 +13,15 @@ Newest first. This file is the engine's status from now on. The history of each 
 - [Problem reports](status/reports.md): the engine's own reports, the log ring, the shared crate.
 - [Later modules](status/engine-later.md): reserved crates.
 
+## 2026-11-27 · The model setup, and tools on local models
+
+- **Pins:** `SDK_REF` 91c8d2a (connections, `models.catalogue`, `models.remove`), `UI_REF` 6e0c4a5, `INFERENCE_REF` 1e9c5c3 (tool calls on the local provider, and the 36-model catalogue with `publisher`, `about` and `min_ram_gb`), the harness at 077909e, as the SDK pins it.
+- **`models.catalogue`** lists every chat and embedding model of the manifest, installed or not, with its state, a publisher and a Recommended or Not recommended label for this machine (`fits`, `fit_reason`). See [Gateway](status/gateway.md).
+- **`models.remove`** deletes an installed model's file, unloading its worker first.
+- **Tools reach local models**, through `models.stream` and agent sessions alike. See [Agents](status/agents.md).
+- **The broker's connections seam:** `Services.connections` (`broker::Connections`) answers `connections.*`, and its changes go to the shell's status subscription as `connection` events, beside `service_status`. The engine passes `NoConnections` (every call `unsupported`) until the tool server connections land in the next pull request. The conformance run uses an in-memory stand-in (`agents/tests/conformance_support`), which reaches no server, for the SDK's connection checks.
+- **`NoModels`** answers `models.catalogue` with an empty list and `models.remove` with `unknown_model`.
+
 ## 2026-11-25 · SDK_REF at the SDK's recovery kit merge
 
 - **`SDK_REF`** moves from the recovery kit pull request's head (`1b7f2a5`) to its merge commit on the SDK's main (`ca0e4d8`). The SDK code is the same; only its CI files changed.

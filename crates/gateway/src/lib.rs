@@ -17,8 +17,11 @@ mod chat_worker;
 mod disk;
 mod downloads;
 pub mod fetch;
+mod fit;
 mod service;
+mod setup;
 pub mod slots;
+mod tools;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -347,10 +350,6 @@ impl Gateway {
         caller: Caller<'_>,
         request: StreamRequest,
     ) -> Result<(String, ChatStream), WireError> {
-        if !request.tools.is_empty() {
-            let message = "local models do not take tools yet";
-            return Err(WireError::new(ErrorCode::Unsupported, message));
-        }
         let entry = self.choose(caller, request.model.as_deref(), Capability::Chat)?;
         self.admit(entry)?;
         let worker = self.worker(entry, ServerMode::Chat)?;
@@ -364,6 +363,8 @@ impl Gateway {
                 true => ReasoningChoice::On,
                 false => ReasoningChoice::Off,
             }),
+            tools: tools::offered(request.tools)?,
+            ..ChatRequest::default()
         };
         let stream = worker.chat(chat).await.map_err(failure)?;
         Ok((id, stream))
@@ -399,5 +400,7 @@ fn message(m: isonomic_proto::models::Message) -> ChatMessage {
     ChatMessage {
         role: role.to_string(),
         content: m.content,
+        tool_calls: m.tool_calls.into_iter().map(tools::call).collect(),
+        tool_call_id: m.tool_call_id,
     }
 }

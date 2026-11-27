@@ -2,6 +2,13 @@
 
 Newest first. The host for agent sessions (`crates/agents`), over the harness host.
 
+## 2026-11-27 · Agents: tool calls on local models
+
+- **`GatewayModel`** now says `tools: true`. The harness's tools go to the model as tool definitions (their input schema as JSON text). Earlier calls go back on the assistant message under the harness's call id, and each result is a tool message answering that id; structured results are sent as JSON text.
+- **Streamed fragments are joined by index** (`agents::tool_calls`, one small type, to be replaced by the inference library's joiner when it lands). Each whole call is a `ModelEvent::ToolCall`, in index order, and the reply ends `ToolUse`. A call with no arguments gets `{}`.
+- **The request code moved** to `agents::model_request`, to keep `model.rs` small.
+- **Test:** `tests/model_tools.rs`, against the fake model server's two interleaved calls.
+
 ## 2026-11-16 · Agents: after a stop, the next reply waits until the model server has ended the stopped one
 
 - **#79 did not hold on the Mac.** A continue straight after a stop still went to slot 1 and read 268 prompt tokens (2.97 s), so the cause was confirmed. No timed wait ran: the continue came later than #79's window, yet slot 0 was still busy.

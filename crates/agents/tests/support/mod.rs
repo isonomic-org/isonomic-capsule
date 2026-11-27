@@ -118,6 +118,7 @@ pub async fn shell_with(root: &Path, port: u16, title_quiet: Option<Duration>) -
         agents: Arc::new(host),
         models: gateway,
         identity: Arc::new(identity),
+        connections: Arc::new(broker::NoConnections),
     };
     let system = StackSystem::new(
         Arc::new(supervisor::Stack::new(None)),

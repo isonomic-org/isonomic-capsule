@@ -29,6 +29,18 @@ fn caller(manifest: Option<&Manifest>) -> Caller<'_> {
     }
 }
 
+/// The model setup is the shell's. The broker's own check refuses these
+/// to every app token already; this keeps the gateway safe on its own.
+fn shell_only(manifest: Option<&Manifest>, method: &str) -> Result<(), WireError> {
+    match manifest {
+        None => Ok(()),
+        Some(_) => Err(WireError::new(
+            ErrorCode::CapabilityDenied,
+            format!("{method} is the shell's"),
+        )),
+    }
+}
+
 /// The wire's stop for the server's finish reason.
 fn stop(reason: &str) -> StopReason {
     match reason {
@@ -71,13 +83,18 @@ fn forward(mut stream: ChatStream) -> StreamStarter {
                     let mut out = ModelChunk {
                         text: chunk.delta,
                         reasoning: chunk.reasoning.filter(|r| !r.is_empty()),
+                        tool_calls: chunk
+                            .tool_calls
+                            .into_iter()
+                            .map(crate::tools::delta)
+                            .collect(),
                         ..ModelChunk::default()
                     };
                     if let Some(reason) = chunk.finish_reason {
                         out.stop = Some(stop(&reason));
                         break out;
                     }
-                    if out.text.is_empty() && out.reasoning.is_none() {
+                    if out.text.is_empty() && out.reasoning.is_none() && out.tool_calls.is_empty() {
                         continue;
                     }
                     if outbox.send(send(out)).await.is_err() {
@@ -163,6 +180,15 @@ impl Gateway {
                     Reply::Cancelled {}
                 }
                 Call::ModelsRecommended(r) => Reply::Recommended(self.recommend(r.profile)?),
+                Call::ModelsCatalogue(_) => {
+                    shell_only(manifest, "models.catalogue")?;
+                    Reply::Catalogue(self.catalogue_entries())
+                }
+                Call::ModelsRemove(r) => {
+                    shell_only(manifest, "models.remove")?;
+                    self.remove(&r.id).await?;
+                    Reply::Done {}
+                }
                 Call::ModelsEmbed { model, input } => {
                     let (model, vectors) = self.embed(who, model.as_deref(), input).await?;
                     Reply::Embeddings { model, vectors }

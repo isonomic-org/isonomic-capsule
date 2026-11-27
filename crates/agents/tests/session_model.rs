@@ -98,6 +98,7 @@ async fn rig(check: bool) -> Rig {
         agents: Arc::new(host),
         models: gateway,
         identity: Arc::new(broker::identity::NoIdentity),
+        connections: Arc::new(broker::NoConnections),
     };
     let hardware = Arc::new(FixedHardware::with_total(16 << 30));
     let system = StackSystem::new(
