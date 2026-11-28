@@ -53,11 +53,11 @@ isonomic-conformance = { path = "../isonomic-sdk/crates/conformance" }
 isonomic-reports = { path = "../isonomic-sdk/crates/reports" }
 # The harness, at the URL and rev the SDK pins, so cargo builds one copy of
 # harness-core and the event types match the SDK's.
-harness-core = { git = "ssh://git@github.com/isonomic-org/isonomic-harness.git", rev = "ba26c809012068f25ff7405509522c100dc7be68" }
-harness-host = { git = "ssh://git@github.com/isonomic-org/isonomic-harness.git", rev = "ba26c809012068f25ff7405509522c100dc7be68" }
-harness-preset = { git = "ssh://git@github.com/isonomic-org/isonomic-harness.git", rev = "ba26c809012068f25ff7405509522c100dc7be68" }
-harness-toolkit = { git = "ssh://git@github.com/isonomic-org/isonomic-harness.git", rev = "ba26c809012068f25ff7405509522c100dc7be68" }
-harness-log = { git = "ssh://git@github.com/isonomic-org/isonomic-harness.git", rev = "ba26c809012068f25ff7405509522c100dc7be68" }
+harness-core = { git = "ssh://git@github.com/isonomic-org/isonomic-harness.git", rev = "d7d8ab64996ecabe671fa5b9f618e909e16d6c0d" }
+harness-host = { git = "ssh://git@github.com/isonomic-org/isonomic-harness.git", rev = "d7d8ab64996ecabe671fa5b9f618e909e16d6c0d" }
+harness-preset = { git = "ssh://git@github.com/isonomic-org/isonomic-harness.git", rev = "d7d8ab64996ecabe671fa5b9f618e909e16d6c0d" }
+harness-toolkit = { git = "ssh://git@github.com/isonomic-org/isonomic-harness.git", rev = "d7d8ab64996ecabe671fa5b9f618e909e16d6c0d" }
+harness-log = { git = "ssh://git@github.com/isonomic-org/isonomic-harness.git", rev = "d7d8ab64996ecabe671fa5b9f618e909e16d6c0d" }
 # Local models, from the isonomic-inference sibling checkout at INFERENCE_REF.
 isonomic-inference-core = { path = "../isonomic-inference/crates/inference-core" }
 isonomic-inference-testkit = { path = "../isonomic-inference/crates/testkit" }
