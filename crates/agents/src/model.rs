@@ -44,15 +44,6 @@ pub struct GatewayModel {
 pub fn is_title(req: &ModelRequest) -> bool {
     req.system.trim() == harness_log::history::TITLE_PROMPT
 }
-/// The smallest catalogue model. It is tagged `tools` but calls them too
-/// unreliably for display widgets, so it is offered none.
-pub const NO_DISPLAY_TOOLS: &str = "qwen3.5-0.8b-q4-k-m";
-
-/// Whether the harness may treat `entry` as a model that calls tools.
-pub fn calls_tools(entry: &ModelEntry) -> bool {
-    entry.meta.id.as_str() != NO_DISPLAY_TOOLS && entry.tags.iter().any(|t| t == "tools")
-}
-
 /// The engine's quiet period before a title: a quick follow-up never meets
 /// one.
 pub const TITLE_QUIET: Duration = Duration::from_secs(2);
@@ -132,13 +123,11 @@ impl ModelClient for GatewayModel {
     fn caps(&self, model: &str) -> ModelCaps {
         // What one conversation can hold: the model's own window, cut to
         // the chat worker's slot. Compaction works from this number.
-        let entry = self
+        let context = self
             .resolve(model)
             .ok()
             .flatten()
-            .and_then(|id| self.gateway.catalogue().get(&id).cloned());
-        let context = entry
-            .as_ref()
+            .and_then(|id| self.gateway.catalogue().get(&id).cloned())
             .and_then(|e| e.meta.context_length)
             .unwrap_or(gateway::SLOT_CONTEXT)
             .min(gateway::SLOT_CONTEXT);
@@ -148,9 +137,7 @@ impl ModelClient for GatewayModel {
             prefill: true,
             reasoning: true,
             // Tools reach the local model server, which calls them back.
-            // The harness offers display tools only to a model that calls
-            // tools: one the catalogue tags `tools`, except the smallest.
-            tools: entry.as_ref().is_some_and(calls_tools),
+            tools: true,
             context_tokens: u64::from(context),
         }
     }
@@ -368,27 +355,5 @@ mod caps_tests {
         assert_eq!(m.caps("big").context_tokens, 8192);
         assert_eq!(m.caps("local:small").context_tokens, 2048);
         assert_eq!(m.caps("nope").context_tokens, 8192);
-    }
-
-    #[test]
-    fn display_tools_go_only_to_tagged_models_but_the_smallest() {
-        use isonomic_inference_core::ModelRef;
-        let hash = "0".repeat(64);
-        let entry = |id: &str, tags: &str| {
-            format!(
-                r#"{{"id":"{id}","name":"{id}","file_name":"{id}.gguf","source_url":"https://example.invalid/{id}","sha256":"{hash}","size_bytes":1,"capabilities":["chat"],"tags":[{tags}],"license":{{"name":"Apache-2.0","commercial_use":true,"url":"https://example.invalid"}}}}"#
-            )
-        };
-        let json = format!(
-            r#"{{"default_chat":"tagged","models":[{},{},{}]}}"#,
-            entry("tagged", r#""tools","vision""#),
-            entry("plain", r#""vision""#),
-            entry(NO_DISPLAY_TOOLS, r#""tools""#)
-        );
-        let manifest = isonomic_model_library::Manifest::from_json(&json).unwrap();
-        let calls = |id: &str| calls_tools(manifest.get(&ModelRef::new(id)).unwrap());
-        assert!(calls("tagged"));
-        assert!(!calls("plain"));
-        assert!(!calls(NO_DISPLAY_TOOLS));
     }
 }

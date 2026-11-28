@@ -14,13 +14,6 @@ Newest first. This file is the engine's status from now on. The history of each 
 - [Problem reports](status/reports.md): the engine's own reports, the log ring, the shared crate.
 - [Later modules](status/engine-later.md): reserved crates.
 
-## 2026-11-28 · Display widgets on the local models
-
-- **Pins:** `SDK_REF` 24b945a, the harness at ba26c80, as the SDK pins it. `INFERENCE_REF` 6f71866 and `ID_REF` d39a507 are unchanged.
-- **The harness now offers display widgets** (the `display` tool kind, schema revision 1), but only to a model whose `ModelCaps::tools` is true. `GatewayModel::caps` sets `tools` from the catalogue: true for an entry tagged `tools`, false for the smallest model (`qwen3.5-0.8b-q4-k-m`, `NO_DISPLAY_TOOLS`) and for an entry without the tag. The 2B and every larger tagged model get widgets on every profile, Intel included.
-- **Deviation:** the rule is the catalogue tag, not "every model but the 0.8B". Two draft models without the tag (`phi-4-q4-k`, `magistral-small-2509-q4-k-m`) also get no widgets, and so does the agents tests' `chat-small`, which is why their fake server no longer loops on tool calls. `model_tools` tags its model `tools`. A model the catalogue does not know reports `tools: false`.
-- **Only display tools follow `tools`.** Connected-app and engine tools are offered as before.
-
 ## 2026-11-27 · Connected apps in chat sessions
 
 - **Pins:** `SDK_REF` da00077, `INFERENCE_REF` 6f71866, the harness at ef14f17, as the SDK pins it. `UI_REF` stays 6e0c4a5.

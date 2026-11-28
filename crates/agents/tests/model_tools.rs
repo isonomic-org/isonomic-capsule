@@ -41,7 +41,7 @@ async fn interleaved_calls_come_back_whole_and_stop_for_tool_use() {
     std::fs::write(models.join("small.gguf"), [0u8; 16]).unwrap();
     let hash = "0".repeat(64);
     let catalogue = Manifest::from_json(&format!(
-        r#"{{"default_chat":"chat-small","models":[{{"id":"chat-small","name":"Chat small","file_name":"small.gguf","source_url":"https://example.invalid/small.gguf","sha256":"{hash}","size_bytes":16,"context_length":4096,"capabilities":["chat"],"tags":["tools"],"license":{{"name":"Apache-2.0","commercial_use":true,"url":"https://example.invalid"}}}}]}}"#
+        r#"{{"default_chat":"chat-small","models":[{{"id":"chat-small","name":"Chat small","file_name":"small.gguf","source_url":"https://example.invalid/small.gguf","sha256":"{hash}","size_bytes":16,"context_length":4096,"capabilities":["chat"],"license":{{"name":"Apache-2.0","commercial_use":true,"url":"https://example.invalid"}}}}]}}"#
     ))
     .unwrap();
     let server = FakeModelServer::start().await;
